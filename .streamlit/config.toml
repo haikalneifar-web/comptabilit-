@@ -1,0 +1,19 @@
+[theme]
+primaryColor = "#2a78d6"
+backgroundColor = "#fbfcfd"
+secondaryBackgroundColor = "#eef1f4"
+textColor = "#0f1419"
+linkColor = "#1f5ea9"
+borderColor = "#dbe2e8"
+baseRadius = "medium"
+font = "sans-serif"
+
+[theme.sidebar]
+backgroundColor = "#f4f7f9"
+
+[server]
+headless = true
+fileWatcherType = "auto"
+
+[browser]
+gatherUsageStats = false

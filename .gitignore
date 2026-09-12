@@ -1,0 +1,15 @@
+# Le registre de travail contient les données réelles du cabinet : il reste sur
+# la machine, hors de tout historique de version.
+data/
+sauvegardes/
+
+# Exports produits à la demande, jamais des sources
+*.pdf
+*.xlsx
+*.csv
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.streamlit/secrets.toml
