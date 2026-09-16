@@ -1,5 +1,6 @@
 """Rendu des pages de l'app, sur une COPIE de la base (AppTest, sans navigateur)."""
 
+import calendar
 import datetime as dt
 import shutil
 import sys
@@ -73,16 +74,32 @@ verifier("le mois comptable est la page par défaut",
 conn = store.connect()
 attendu_mois = store.mois_a_saisir(conn)
 dernier = store.dernier_jour_rempli(conn)
+actifs_mois = conn.execute(
+    "SELECT COUNT(*) n FROM jours WHERE substr(date,1,7)=? AND recettes>0",
+    (f"{attendu_mois[0]:04d}-{attendu_mois[1]:02d}",),
+).fetchone()["n"]
 conn.close()
-verifier("le mois proposé suit la dernière journée renseignée",
-         attendu_mois == (2026, 8), f"({attendu_mois}, dernier={dernier})")
-verifier("mois d'août retenu à l'affichage",
-         at.session_state["mois_travail"] == (2026, 8),
-         f"({at.session_state['mois_travail']})")
-verifier("le mois non saisi est signalé",
-         any("n'est pas encore saisi" in w.value for w in at.warning))
-verifier("31 lignes affichées pour août", len(at.dataframe[1].value) == 31,
-         f"({len(at.dataframe[1].value)})")
+
+# Le mois proposé dépend de l'avancement de la saisie : on vérifie ses bornes,
+# pas sa valeur, qui change à chaque mois repris.
+aujourdhui = dt.date.today()
+verifier("le mois proposé part de la dernière journée renseignée, sans dépasser "
+         "le mois courant",
+         (dernier.year, dernier.month) <= attendu_mois
+         <= (aujourdhui.year, aujourdhui.month),
+         f"({attendu_mois}, dernier={dernier})")
+verifier("c'est bien lui qui est retenu à l'affichage",
+         at.session_state["mois_travail"] == attendu_mois,
+         f"({at.session_state['mois_travail']} au lieu de {attendu_mois})")
+if actifs_mois:
+    print(f"       (le mois proposé porte déjà {actifs_mois} journée(s) : "
+          "pas d'avertissement attendu)")
+else:
+    verifier("le mois non saisi est signalé",
+             any("n'est pas encore saisi" in w.value for w in at.warning))
+verifier("toutes les journées du mois sont affichées",
+         len(at.dataframe[1].value) == calendar.monthrange(*attendu_mois)[1],
+         f"({len(at.dataframe[1].value)} pour {attendu_mois})")
 
 print("\n0 bis. Un mois au-delà de la dernière ligne du classeur")
 at = lancer(etat={"mois_travail": (2027, 3)})

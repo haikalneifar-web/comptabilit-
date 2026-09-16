@@ -33,10 +33,20 @@ def verifier(nom, condition, detail=""):
 
 
 print("\n1. Migration : clôture des seules journées qui portent des chiffres")
+# Le partage clôturées / ouvertes bouge à chaque mois saisi : ce qui se vérifie
+# ici n'est pas son chiffre, c'est qu'il recouvre tout le registre et que les
+# deux états coexistent. La règle elle-même est vérifiée juste en dessous, dans
+# les deux sens et sans constante.
+n_total = conn.execute("SELECT COUNT(*) n FROM jours").fetchone()["n"]
 n_cloture = conn.execute("SELECT COUNT(*) n FROM jours WHERE cloture=1").fetchone()["n"]
 n_ouvert = conn.execute("SELECT COUNT(*) n FROM jours WHERE cloture=0").fetchone()["n"]
-verifier("2 903 journées acquises sont clôturées", n_cloture == 2903, f"({n_cloture})")
-verifier("1 227 emplacements vides restent ouverts", n_ouvert == 1227, f"({n_ouvert})")
+verifier("les 4 130 journées du classeur sont au registre", n_total == 4130,
+         f"({n_total})")
+verifier("clôturées + ouvertes couvrent tout le registre",
+         n_cloture + n_ouvert == n_total, f"({n_cloture} + {n_ouvert} ≠ {n_total})")
+verifier("les journées acquises sont clôturées", n_cloture > 0, f"({n_cloture})")
+verifier("des emplacements de saisie restent ouverts", n_ouvert > 0, f"({n_ouvert})")
+print(f"       ({n_cloture} clôturées, {n_ouvert} ouvertes)")
 from compta.model import CHAMPS_SAISIE  # noqa: E402
 verifier("aucune journée clôturée n'est vide",
          conn.execute(
