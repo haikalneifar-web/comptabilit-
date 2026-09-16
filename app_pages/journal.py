@@ -17,7 +17,7 @@ import streamlit as st
 from app_utils import (bandeau_registre, bandeau_saisie, barre_export,
                        editeur_persistant, get_conn, memoriser, montant,
                        oublier, selecteur_mois, totaux_registre)
-from compta import store
+from compta import store, xlsx_io
 from compta.config import MONTANTS_DIRECTS, TOUS_ACTES
 from compta.model import MONTANTS, mois_long
 
@@ -29,6 +29,18 @@ frontiere = store.frontiere_tarifs(conn)
 premiere, derniere = store.bornes(conn)
 
 st.header("Mois comptable", anchor=False)
+
+# Le classeur s'ouvre aussi dans Excel : si des journées y ont été saisies
+# directement, ce tableau est en retard sur le fichier et rien ne le dirait.
+sync = xlsx_io.etat_synchronisation(conn)
+if sync["connu"] and not sync["a_jour"]:
+    st.warning(
+        f"Le classeur a été modifié le **{sync['modifie_le']:%d/%m/%Y à %H:%M}**, "
+        f"après sa dernière lecture par l'app le "
+        f"{sync['lu_le']:%d/%m/%Y à %H:%M}. Ce que vous voyez ici peut être en "
+        "retard sur le fichier — réimportez depuis **Classeur Excel**.",
+        icon=":material/sync_problem:",
+    )
 
 if premiere is None:
     st.info("Aucune journée enregistrée.", icon=":material/inbox:")

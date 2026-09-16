@@ -20,7 +20,7 @@ from openpyxl.utils import column_index_from_string
 from .config import (BACKUP_DIR, COL_DATE, COL_JOUR, JOURS_FR, SAISIE_COLS,
                      SHEET_NAME, TARIF_COLS, XLSX_PATH)
 from .model import COMPTEURS, MONTANTS, TARIFS_DEFAUT, Journee
-from .store import ecrire_jour
+from .store import ecrire_jour, meta_get, meta_set
 
 _RE_TARIF = re.compile(r"^=\s*[A-Z]{1,3}\d+\s*\*\s*([0-9]+(?:[.,][0-9]+)?)\s*$")
 _IDX = {cle: column_index_from_string(col) for cle, col in SAISIE_COLS.items()}
@@ -69,6 +69,60 @@ def sauvegarder(chemin: Path = XLSX_PATH) -> Path:
     cible = BACKUP_DIR / f"{chemin.stem}_{horo}{chemin.suffix}"
     shutil.copy2(chemin, cible)
     return cible
+
+
+# --- synchronisation registre / classeur --------------------------------------
+#
+# L'app n'est pas seule à écrire dans le classeur : il s'ouvre aussi dans Excel.
+# En août 2026, un mois entier y a été saisi à la main sans que le registre en
+# sache rien — il est resté un mois en retard sans le moindre signal. On relève
+# donc l'état du fichier à chaque fois que les deux sont mis d'accord, pour
+# pouvoir dire ensuite qu'il a bougé depuis.
+
+_META_SOURCE = "xlsx_source"
+
+
+def _empreinte(chemin: Path) -> dict:
+    st = chemin.stat()
+    return {
+        "mtime": st.st_mtime,
+        "taille": st.st_size,
+        "releve_le": dt.datetime.now().isoformat(timespec="seconds"),
+    }
+
+
+def marquer_synchronise(conn, chemin: Path = XLSX_PATH) -> None:
+    """Registre et classeur viennent d'être mis d'accord : on note l'état du
+    fichier. Appelé après un import comme après une écriture."""
+    if chemin.exists():
+        meta_set(conn, _META_SOURCE, _empreinte(chemin))
+
+
+def etat_synchronisation(conn, chemin: Path = XLSX_PATH) -> dict:
+    """Le classeur a-t-il changé depuis que le registre l'a lu ?
+
+    `connu` est faux tant qu'aucun relevé n'a été pris — registre importé avant
+    la mise en place de ce contrôle. Dans ce cas on ne prétend rien.
+    """
+    if not chemin.exists():
+        return {"connu": False, "absent": True, "a_jour": False}
+    releve = meta_get(conn, _META_SOURCE)
+    if not releve:
+        return {"connu": False, "absent": False, "a_jour": False}
+    actuel = _empreinte(chemin)
+    # une seconde de tolérance : les systèmes de fichiers n'ont pas tous la
+    # même résolution sur les dates de modification
+    bouge = (abs(actuel["mtime"] - releve["mtime"]) > 1
+             or actuel["taille"] != releve["taille"])
+    return {
+        "connu": True,
+        "absent": False,
+        "a_jour": not bouge,
+        "lu_le": dt.datetime.fromisoformat(releve["releve_le"]),
+        "modifie_le": dt.datetime.fromtimestamp(actuel["mtime"]),
+        "taille_lue": releve["taille"],
+        "taille_actuelle": actuel["taille"],
+    }
 
 
 # --- import ------------------------------------------------------------------
@@ -143,6 +197,7 @@ def importer(conn, chemin: Path = XLSX_PATH, progress=None) -> dict:
         importees += 1
 
     conn.commit()
+    marquer_synchronise(conn, chemin)
     dates = sorted(vues)
     return {
         "lignes": importees,
@@ -285,6 +340,8 @@ def exporter(conn, journees: list[Journee], chemin: Path = XLSX_PATH,
     if wb.calculation is not None:
         wb.calculation.fullCalcOnLoad = True
     wb.save(chemin)
+    # c'est l'app qui vient d'écrire : le fichier a changé sans désaccord
+    marquer_synchronise(conn, chemin)
 
     return {
         "ecrites": ecrites,

@@ -33,6 +33,36 @@ st.table(
     width="content",
 )
 
+# --- le classeur a-t-il bougé sans l'app ? -----------------------------------
+
+sync = xlsx_io.etat_synchronisation(conn)
+
+if not sync["connu"]:
+    st.caption(
+        ":material/help: L'app ne sait pas encore reconnaître une modification "
+        "extérieure du classeur : le registre a été importé avant ce contrôle. "
+        "Le prochain import — ou la prochaine écriture — le mettra en place."
+    )
+elif not sync["a_jour"]:
+    st.error(
+        "**Le classeur a changé depuis que le registre l'a lu.**\n\n"
+        f"- lu par l'app le **{sync['lu_le']:%d/%m/%Y à %H:%M}**\n"
+        f"- modifié depuis, le **{sync['modifie_le']:%d/%m/%Y à %H:%M}**"
+        + (f" — taille {sync['taille_lue'] / 1_048_576:.1f} → "
+           f"{sync['taille_actuelle'] / 1_048_576:.1f} Mo"
+           if sync["taille_lue"] != sync["taille_actuelle"] else "")
+        + "\n\nDes journées y ont peut-être été saisies directement dans Excel : "
+          "le registre ne les connaît pas, et ce que l'app affiche est en retard "
+          "sur le fichier. **Réimportez avant d'écrire** — en bas de cette page.",
+        icon=":material/sync_problem:",
+    )
+else:
+    st.success(
+        f"Registre et classeur sont d'accord — dernier échange le "
+        f"{sync['lu_le']:%d/%m/%Y à %H:%M}.",
+        icon=":material/sync:",
+    )
+
 st.info(
     "L'app n'écrit que les colonnes de saisie — C, E, H, J, L, N, P (compteurs) et "
     "R, S, T, V (montants). Les colonnes de montants et de totaux restent des "
@@ -93,7 +123,19 @@ else:
 
     st.caption("Une copie horodatée du classeur est créée avant chaque écriture.")
 
-    if st.button("Écrire dans le classeur", icon=":material/save:", type="primary"):
+    # écrire dans un fichier qu'on sait plus récent que le registre demande un
+    # geste de plus : l'écriture ne clobbere pas les autres journées, mais elle
+    # clôture les siennes sur des chiffres qui peuvent être dépassés
+    desaccord = sync["connu"] and not sync["a_jour"]
+    confirme = True
+    if desaccord:
+        confirme = st.checkbox(
+            "J'ai vérifié : écrire malgré la modification extérieure du classeur",
+            key="forcer_ecriture_desync",
+        )
+
+    if st.button("Écrire dans le classeur", icon=":material/save:", type="primary",
+                 disabled=not confirme):
         journees = [store.lire_jour_corrige(conn, d, tarifs) for d in en_attente]
         try:
             with st.spinner("Écriture en cours…"):

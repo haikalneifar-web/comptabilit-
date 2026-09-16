@@ -46,7 +46,7 @@ saisies à l'unité.
 | **Saisie du jour** | En appoint : un bouton par acte au fil de la journée, ou les totaux du jour d'un coup. |
 | **Rectifications** | Deux tableaux côte à côte : à gauche le registre réel, non modifiable ; à droite le corrigé, qu'on modifie. L'écart devient une rectification motivée. Suivent le journal des corrections du mois et leur effet sur les totaux. |
 | **Tableau de bord** | Évolution mensuelle, composition des recettes, volume de cataractes, récapitulatif annuel. |
-| **Classeur Excel** | Écrit les journées saisies dans le `.xlsx`, liste les sauvegardes, permet de réimporter. |
+| **Classeur Excel** | Écrit les journées saisies dans le `.xlsx`, signale si le fichier a changé sans l'app, liste les sauvegardes, permet de réimporter. |
 | **Tarifs** | Tarifs unitaires des nouvelles journées, et historique des tarifs relevés dans le classeur. |
 
 ## Quand un tarif change
@@ -180,6 +180,21 @@ Une seule exception, décrite plus bas : sur une journée **encore ouverte**, la
 
 Une **copie horodatée** du classeur est déposée dans `sauvegardes/` avant chaque écriture. Si le classeur est ouvert dans Excel au moment de l'écriture, l'app le signale et n'écrit rien.
 
+### Quand le classeur bouge sans l'app
+
+L'app n'est pas seule à écrire dans le fichier : il s'ouvre aussi dans Excel.
+Elle relève donc l'état du classeur — date de modification et taille — chaque
+fois que les deux sont mis d'accord, c'est-à-dire après chaque import et après
+chaque écriture.
+
+Si le fichier a changé depuis ce relevé, la page **Classeur Excel** le dit en
+rouge avec les deux dates, et *Mois comptable* porte le même avertissement : ce
+qui est affiché peut être en retard sur le fichier. L'écriture reste possible,
+mais demande alors de cocher une case — écrire des journées sur un classeur plus
+récent que le registre les clôturerait sur des chiffres peut-être dépassés.
+
+Le remède est le **réimport**, en bas de la page Classeur Excel.
+
 Au-delà du 23/01/2027 — dernière ligne pré-remplie du classeur — l'app crée les lignes manquantes en recopiant le style et les formules de la dernière ligne existante, avec les tarifs de la page **Tarifs**.
 
 ## Organisation
@@ -205,6 +220,7 @@ Les tests se lancent directement :
 python tests\test_rectifications.py   # registre figé, journal des corrections
 python tests\test_tarifs.py           # changement de prix, jusqu'à l'écriture Excel
 python tests\test_export.py           # PDF, Excel et CSV relus et vérifiés
+python tests\test_synchronisation.py  # le classeur modifié en dehors de l'app
 python tests\test_pages.py            # rendu des six pages, sans navigateur
 ```
 
