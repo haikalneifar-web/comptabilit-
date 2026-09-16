@@ -93,6 +93,41 @@ verifier("un changement ultérieur ne la touche plus",
          store.lire_jour(conn, VIDE, store.tarifs_courants(conn)).tarifs["t_apci"] == 74.0)
 store.enregistrer_tarifs(conn, NOUVEAUX)
 
+print("\n5 bis. Le changement ne vaut que pour la suite")
+from compta.model import CHAMPS_SAISIE  # noqa: E402
+
+frontiere = store.frontiere_tarifs(conn)
+annee_m, mois_m = store.mois_a_saisir(conn)
+verifier("la frontière est le 1er du mois à reprendre",
+         frontiere == dt.date(annee_m, mois_m, 1), f"({frontiere})")
+verifier("la journée de test est bien du côté à venir de la frontière",
+         VIDE >= frontiere, f"({VIDE} < {frontiere})")
+
+# une journée oubliée : vide et ouverte, mais dans un mois déjà travaillé
+oubliee = conn.execute(
+    f"SELECT date, t_apci FROM jours WHERE cloture=0 AND ({' + '.join(CHAMPS_SAISIE)})=0 "
+    "AND date < ? ORDER BY date DESC LIMIT 1", (frontiere.isoformat(),)
+).fetchone()
+if oubliee is None:
+    print("  (aucune journée oubliée dans le registre, cas non testé)")
+else:
+    d_oubliee = dt.date.fromisoformat(oubliee["date"])
+    j_oubliee = store.lire_jour(conn, d_oubliee, store.tarifs_courants(conn))
+    verifier("une journée oubliée garde le tarif que le classeur lui a donné",
+             j_oubliee.tarifs["t_apci"] == oubliee["t_apci"],
+             f"({d_oubliee} : {j_oubliee.tarifs['t_apci']} au lieu de {oubliee['t_apci']})")
+    # et la saisir ne la fait pas basculer au tarif du jour
+    saisie_tardive = store.lire_jour(conn, d_oubliee, store.tarifs_courants(conn))
+    saisie_tardive.apci_n = 5
+    store.ecrire_jour(conn, saisie_tardive)
+    relue_tardive = store.lire_jour(conn, d_oubliee, store.tarifs_courants(conn))
+    verifier("la saisir ne la compte pas au prix d'aujourd'hui",
+             relue_tardive.tarifs["t_apci"] == oubliee["t_apci"],
+             f"({relue_tardive.tarifs['t_apci']})")
+    verifier("son montant suit le tarif de sa période",
+             abs(relue_tardive.apci_m - 5 * oubliee["t_apci"]) < 0.01,
+             f"({relue_tardive.apci_m})")
+
 print("\n6. Écriture dans une COPIE du classeur : la formule est réalignée")
 if not XLSX_PATH.exists():
     print("  (classeur introuvable, écriture non testée)")

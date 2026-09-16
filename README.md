@@ -51,10 +51,18 @@ saisies à l'unité.
 
 ## Quand un tarif change
 
-Un tarif modifié sur la page **Tarifs** s'applique à **toute journée qui ne porte
-pas encore de chiffres** — y compris les lignes déjà présentes dans le classeur
-mais vides. Une journée qui porte des chiffres, ou qui est clôturée, garde le
-tarif sous lequel elle a été saisie : le passé ne se réécrit pas.
+**Un changement de tarif ne vaut que pour la suite.** Il s'applique aux journées
+sans chiffres du **mois en cours de saisie et des mois qui le suivent** — y
+compris les lignes déjà présentes dans le classeur mais vides. Une journée qui
+porte des chiffres, ou qui est clôturée, garde le tarif sous lequel elle a été
+saisie : le passé ne se réécrit pas.
+
+La frontière est le premier jour du mois à reprendre, pas la date du jour : la
+saisie se faisant en fin de mois, les journées qu'on remplit sont toujours
+passées. Elle ne bouge pas pendant qu'on remplit le mois. Une journée **oubliée
+d'un mois déjà travaillé** est vide sans être à venir : elle garde le tarif que
+le classeur a inscrit dans sa formule, celui de ses voisines. Sans cette borne,
+saisir un jour retrouvé de 2019 le compterait au prix d'aujourd'hui.
 
 Le point à connaître : le classeur est pré-rempli jusqu'au 23/01/2027, et ces
 lignes portent dans leurs formules le tarif qui avait cours quand elles ont été

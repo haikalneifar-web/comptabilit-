@@ -12,14 +12,21 @@ from compta.model import CHAMPS_SAISIE, LIBELLES_TARIFS, TARIFS_DEFAUT, tnd
 conn = get_conn()
 courants = store.tarifs_courants(conn)
 
+frontiere = store.frontiere_tarifs(conn)
+
 st.header("Tarifs", anchor=False)
 st.write(
-    "Ces tarifs s'appliquent à **toute journée qui ne porte pas encore de "
-    "chiffres**, y compris les lignes déjà présentes dans le classeur mais "
-    "vides — celui-ci est pré-rempli jusqu'au 23/01/2027 avec le tarif qui "
-    "avait cours quand ces lignes ont été préparées. Une journée qui porte des "
-    "chiffres, ou qui est clôturée, garde le sien : modifier cette page ne "
-    "réécrit jamais le passé."
+    "**Un changement de tarif ne vaut que pour la suite.** Il s'applique aux "
+    "journées sans chiffres du mois en cours de saisie et des mois qui le "
+    f"suivent — soit à partir du **{frontiere:%d/%m/%Y}** —, y compris les "
+    "lignes déjà présentes dans le classeur mais vides : celui-ci est "
+    "pré-rempli jusqu'au 23/01/2027 avec le tarif qui avait cours quand ces "
+    "lignes ont été préparées."
+)
+st.caption(
+    "Le passé n'est jamais réécrit : une journée qui porte des chiffres, ou qui "
+    "est clôturée, garde le sien. Une journée oubliée d'un mois déjà travaillé "
+    "aussi — elle se saisira au tarif de ses voisines, pas à celui d'aujourd'hui."
 )
 st.caption(
     "À l'écriture dans le classeur, la constante de la formule d'une journée "
@@ -33,8 +40,8 @@ vides = conn.execute(f"""
     SELECT {', '.join(f'MIN({t}) min_{t}, MAX({t}) max_{t}' for t in LIBELLES_TARIFS)},
            COUNT(*) n, MIN(date) debut, MAX(date) fin
     FROM jours
-    WHERE cloture=0 AND ({' + '.join(CHAMPS_SAISIE)}) = 0 AND date >= date('now')
-""").fetchone()
+    WHERE cloture=0 AND ({' + '.join(CHAMPS_SAISIE)}) = 0 AND date >= ?
+""", (frontiere.isoformat(),)).fetchone()
 
 if vides and vides["n"]:
     perimes = [
@@ -45,7 +52,7 @@ if vides and vides["n"]:
     ]
     if perimes:
         st.warning(
-            f"{vides['n']} journées à venir attendent au registre "
+            f"{vides['n']} journées encore à saisir attendent au registre "
             f"({vides['debut']} → {vides['fin']}) avec un tarif dépassé :\n\n"
             + "\n".join(f"- {libelle} : {tnd(ancien)} → **{tnd(nouveau)}** TND"
                         for libelle, ancien, nouveau in perimes)

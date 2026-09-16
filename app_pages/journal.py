@@ -23,6 +23,9 @@ from compta.model import MONTANTS, mois_long
 
 conn = get_conn()
 tarifs = store.tarifs_courants(conn)
+# un changement de tarif ne vaut que pour la suite : calculé une fois pour tout
+# le mois affiché, pas à chaque ligne
+frontiere = store.frontiere_tarifs(conn)
 premiere, derniere = store.bornes(conn)
 
 st.header("Mois comptable", anchor=False)
@@ -146,7 +149,7 @@ with gauche:
 # des lignes, lui, est celui de `dates`
 journees, calculees = [], []
 for i, d in enumerate(dates):
-    j = store.vers_journee(par_date[d], tarifs)
+    j = store.vers_journee(par_date[d], tarifs, frontiere)
     for c in champs:
         valeur = edite[c].iloc[i]
         valeur = 0 if pd.isna(valeur) else valeur
@@ -182,7 +185,7 @@ with zone_export_saisie:
 with droite:
     st.caption("**Ce que les formules en tirent** — colonnes U, X, Z, AB, AC")
     bandeau_registre(journees,
-                     reference=[store.vers_journee(par_date[d], tarifs)
+                     reference=[store.vers_journee(par_date[d], tarifs, frontiere)
                                 for d in dates] if ecarts else None)
     st.dataframe(
         pd.DataFrame(calculees).set_index("Date"),

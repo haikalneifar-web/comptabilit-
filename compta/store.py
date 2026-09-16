@@ -157,7 +157,20 @@ def _vers_journee(r: sqlite3.Row) -> Journee:
     return j
 
 
-def _tarifs_du_jour(j: Journee, tarifs_courants: dict[str, float] | None) -> Journee:
+def frontiere_tarifs(conn) -> dt.date:
+    """Première journée qu'un changement de tarif peut encore régir.
+
+    Un changement de tarif ne vaut que pour la suite. « La suite » commence au
+    premier jour du mois en cours de saisie : les mois déjà travaillés sont
+    clos, leurs trous compris. C'est `mois_a_saisir` qui fait foi, pour que la
+    frontière ne bouge pas pendant qu'on remplit le mois.
+    """
+    annee, mois = mois_a_saisir(conn)
+    return dt.date(annee, mois, 1)
+
+
+def _tarifs_du_jour(j: Journee, tarifs_courants: dict[str, float] | None,
+                    depuis: dt.date | None = None) -> Journee:
     """Aligne les tarifs d'une journée encore vierge sur les tarifs en vigueur.
 
     Le classeur est pré-rempli de lignes à zéro jusqu'au 23/01/2027, avec le
@@ -165,22 +178,36 @@ def _tarifs_du_jour(j: Journee, tarifs_courants: dict[str, float] | None) -> Jou
     sont pas des journées : tant qu'elles ne portent aucun chiffre, elles
     doivent suivre le tarif du jour. Dès qu'une journée porte des chiffres — ou
     qu'elle est clôturée — elle garde les siens, c'est son histoire.
+
+    `depuis` — la frontière ci-dessus — borne le procédé au mois en cours et à
+    ce qui le suit. Une journée oubliée d'un mois déjà travaillé est vide sans
+    être à venir : elle garde le tarif que le classeur a inscrit dans sa
+    formule, celui de ses voisines, et non le tarif d'aujourd'hui. Sans quoi
+    saisir un jour retrouvé de 2019 le compterait au prix de 2026.
     """
-    if tarifs_courants and j.vide and not j.cloture:
+    if (tarifs_courants and j.vide and not j.cloture
+            and (depuis is None or j.date >= depuis)):
         j.tarifs = dict(tarifs_courants)
     return j
 
 
-def vers_journee(ligne, tarifs_courants: dict[str, float] | None = None) -> Journee:
+def vers_journee(ligne, tarifs_courants: dict[str, float] | None = None,
+                 depuis: dt.date | None = None) -> Journee:
     """Une ligne du registre (Row ou dict) en journée calculable, avec ses
-    propres tarifs — ceux de sa période, pas ceux d'aujourd'hui."""
-    return _tarifs_du_jour(_vers_journee(ligne), tarifs_courants)
+    propres tarifs — ceux de sa période, pas ceux d'aujourd'hui.
+
+    `depuis` vient de `frontiere_tarifs` ; l'appelant qui boucle sur un mois le
+    calcule une fois plutôt qu'à chaque ligne.
+    """
+    return _tarifs_du_jour(_vers_journee(ligne), tarifs_courants, depuis)
 
 
 def lire_jour(conn, date: dt.date, tarifs_defaut: dict[str, float] | None = None) -> Journee:
     r = conn.execute("SELECT * FROM jours WHERE date=?", (date.isoformat(),)).fetchone()
     if r:
-        return _tarifs_du_jour(_vers_journee(r), tarifs_defaut)
+        depuis = frontiere_tarifs(conn) if tarifs_defaut else None
+        return _tarifs_du_jour(_vers_journee(r), tarifs_defaut, depuis)
+    # absente du registre : au-delà de la dernière ligne du classeur, donc à venir
     j = Journee(date=date)
     j.tarifs = dict(tarifs_defaut or TARIFS_DEFAUT)
     return j
