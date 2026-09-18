@@ -183,7 +183,12 @@ Uniquement les **colonnes de saisie** :
 
 Toutes les colonnes de montants et de totaux (`D`, `F`, `G`, `I`, `K`, `M`, `O`, `Q`, `U`, `W`, `X`, `Z`, `AA`, `AB`, `AC`, `AD`) restent des **formules Excel**. Le fichier se recalcule à son ouverture.
 
-Une seule exception, décrite plus bas : sur une journée **encore ouverte**, la constante de tarif inscrite dans la formule (`=C123*72`) est remise à jour si le tarif a changé. La formule reste une formule, et une journée clôturée n'est jamais touchée.
+Deux exceptions, toutes deux réservées aux journées **encore ouvertes** — celles dont tous les montants valent zéro, où rien d'historique ne peut donc changer. Une journée clôturée n'est jamais touchée.
+
+1. La constante de tarif inscrite dans la formule (`=C123*72`) est remise à jour si le tarif a changé. La formule reste une formule.
+2. Une colonne de montant **sans aucune formule** en reçoit une (`=J123*70`), au tarif que porte la journée. Sans ça, écrire le compteur en face ferait disparaître la recette : la colonne `U` additionnerait une cellule vide. C'est ce qui a coûté 97 actes entre 2018 et 2019, et la seule façon que ça se reproduise serait de saisir aujourd'hui une de ces journées restées vides. Si le cas se présente sur une journée **acquise**, l'app n'y touche pas et le signale dans le rapport d'écriture.
+
+Le rapport d'écriture dit exactement ce qui a été posé ou réaligné, colonne par colonne.
 
 Une **copie horodatée** du classeur est déposée dans `sauvegardes/` avant chaque écriture. Si le classeur est ouvert dans Excel au moment de l'écriture, l'app le signale et n'écrit rien.
 
@@ -251,4 +256,5 @@ d'environnement `COMPTA_XLSX`.
   - `P` → `Q` cataracte payante : **8 journées, 15 actes**, du 21/02/2019 au 18/07/2019, soit 9 000 TND au tarif voisin de 600. Deux de ces journées (21/03/2019 et 23/05/2019) affichent des recettes strictement nulles alors qu'elles portent 1 et 3 cataractes.
   - `J` → `K` assurance : **68 journées, 82 actes**, du 04/06/2018 au 31/07/2019, soit 3 015 TND aux tarifs voisins (30 puis 45).
   - L'import les signale et **hérite du tarif des lignes voisines** au lieu de retomber sur le tarif d'aujourd'hui — sans quoi ces actes seraient valorisés à 70 et 750 le jour où l'une de ces journées serait rectifiée. Les montants du classeur, eux, ne sont pas touchés : les porter au CA est une rectification, journée par journée, avec son motif.
+  - Ce sont des **oublis de saisie**. Pour qu'ils ne se reproduisent pas, l'écriture pose la formule manquante sur toute journée ouverte avant d'y écrire un compteur (voir plus haut). Les **145 journées à partir du 01/09/2026 sont intactes** : toutes leurs formules sont en place, la saisie des mois à venir ne risque rien.
 - La dernière journée qui porte des chiffres est le **31/08/2026** ; tout ce qui suit dans le classeur est pré-rempli à zéro.

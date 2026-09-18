@@ -28,6 +28,8 @@ _IDX_TARIF = {cle: (column_index_from_string(m), column_index_from_string(c))
               for cle, (m, c) in TARIF_COLS.items()}
 _IDX_DATE = column_index_from_string(COL_DATE)
 _IDX_JOUR = column_index_from_string(COL_JOUR)
+# lettre de colonne d'un compteur -> champ de la journée (`J` -> `star_n`)
+_CLE_COMPTEUR = {col: cle for cle, col in SAISIE_COLS.items()}
 
 # colonnes calculées lues depuis le cache d'Excel à l'import
 _IDX_CALC = {
@@ -398,12 +400,54 @@ def _aligner_tarifs(ws, r: int, tarifs: dict[str, float]) -> list[tuple[str, flo
     return changements
 
 
+def _combler_formules(ws, r: int, tarifs: dict[str, float]) -> list[str]:
+    """Pose les formules de montant absentes d'une ligne encore ouverte.
+
+    Le classeur porte quelques centaines de cellules de montant **vides — pas à
+    zéro, sans formule du tout** : `K` sur 402 lignes, `Q` sur 166, toutes
+    antérieures à 2020. Y écrire un compteur ferait disparaître la recette, la
+    colonne `U` additionnant une cellule vide. C'est exactement ce qui a coûté
+    97 actes entre 2018 et 2019, et la seule façon que ça se reproduise est de
+    saisir aujourd'hui une de ces journées restées vides.
+
+    Réservé aux journées ouvertes, dont tous les montants valent zéro : la
+    formule n'y change aucun total tant que le compteur est nul, et la ligne est
+    entière avant que la saisie n'arrive. Une cellule qui porte déjà quelque
+    chose — formule ou valeur — n'est jamais touchée.
+    """
+    posees = []
+    for cle, (col_montant, col_compteur) in TARIF_COLS.items():
+        if ws[f"{col_montant}{r}"].value is not None:
+            continue
+        ws[f"{col_montant}{r}"] = f"={col_compteur}{r}*{_fmt(tarifs[cle])}"
+        posees.append(col_montant)
+    return posees
+
+
+def _formules_absentes(ws, r: int, j: Journee) -> list[tuple[str, str, int]]:
+    """Compteurs non nuls dont la colonne de montant est vide, sur une journée
+    acquise — qu'on ne comble pas, sa ligne portant déjà des totaux.
+
+    Rien n'est perdu par l'écriture elle-même : ces actes n'étaient déjà dans
+    aucun total. Mais le classeur dira moins que l'app, et c'est le genre de
+    silence qui a créé le problème. On le remonte, la décision appartient à la
+    rectification.
+    """
+    trous = []
+    for col_montant, col_compteur in TARIF_COLS.values():
+        n = int(getattr(j, _CLE_COMPTEUR[col_compteur]))
+        if n and ws[f"{col_montant}{r}"].value is None:
+            trous.append((col_montant, col_compteur, n))
+    return trous
+
+
 def exporter(conn, journees: list[Journee], chemin: Path = XLSX_PATH,
              tarifs_nouveaux: dict[str, float] | None = None) -> dict:
     """Écrit les journées données dans le classeur. Retourne un rapport."""
     if not journees:
         return {"ecrites": 0, "creees": 0, "sauvegarde": None, "lignes": [],
-                "tarifs_alignes": []}
+                "tarifs_alignes": [], "formules_posees": [],
+                "formules_absentes": []}
 
     sauvegarde = sauvegarder(chemin)
     wb = openpyxl.load_workbook(chemin, data_only=False)
@@ -416,6 +460,8 @@ def exporter(conn, journees: list[Journee], chemin: Path = XLSX_PATH,
 
     ecrites, creees, detail = 0, 0, []
     tarifs_alignes: list[tuple[dt.date, str, float, float]] = []
+    formules_posees: list[tuple[dt.date, str]] = []
+    formules_absentes: list[tuple[dt.date, str, str, int]] = []
 
     for j in sorted(journees, key=lambda x: x.date):
         r = index.get(j.date)
@@ -436,10 +482,17 @@ def exporter(conn, journees: list[Journee], chemin: Path = XLSX_PATH,
             derniere_date, derniere_ligne = j.date, ligne
             r = ligne
 
-        # une ligne encore ouverte peut porter un tarif périmé dans ses formules
+        # une ligne encore ouverte peut porter un tarif périmé dans ses
+        # formules, ou pas de formule du tout : on la rend entière avant d'y
+        # écrire quoi que ce soit. Une journée acquise, elle, n'est que signalée.
         if not j.cloture:
+            for col in _combler_formules(ws, r, j.tarifs):
+                formules_posees.append((j.date, col))
             for col, ancien, nouveau in _aligner_tarifs(ws, r, j.tarifs):
                 tarifs_alignes.append((j.date, col, ancien, nouveau))
+        else:
+            for col_montant, col_compteur, n in _formules_absentes(ws, r, j):
+                formules_absentes.append((j.date, col_montant, col_compteur, n))
 
         for cle in COMPTEURS:
             ws.cell(row=r, column=_IDX[cle]).value = int(getattr(j, cle))
@@ -461,6 +514,8 @@ def exporter(conn, journees: list[Journee], chemin: Path = XLSX_PATH,
         "sauvegarde": sauvegarde,
         "lignes": detail,
         "tarifs_alignes": tarifs_alignes,
+        "formules_posees": formules_posees,
+        "formules_absentes": formules_absentes,
     }
 
 

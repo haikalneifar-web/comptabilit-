@@ -177,6 +177,38 @@ else:
                 icon=":material/sell:",
             )
 
+        posees = rapport.get("formules_posees") or []
+        if posees:
+            colonnes = {}
+            for d, col in posees:
+                colonnes.setdefault(col, []).append(d)
+            st.info(
+                "Formules de montant posées sur des journées ouvertes qui n'en "
+                "avaient pas. Sans elles, la recette saisie n'entrait dans aucun "
+                "total du classeur :\n\n"
+                + "\n".join(
+                    f"- colonne **{col}** sur {len(dates)} ligne(s), du "
+                    f"{min(dates):%d/%m/%Y} au {max(dates):%d/%m/%Y}"
+                    for col, dates in sorted(colonnes.items())
+                ),
+                icon=":material/function:",
+            )
+
+        absentes = rapport.get("formules_absentes") or []
+        if absentes:
+            st.warning(
+                "**Des actes écrits sans montant en face.** Ces journées sont "
+                "acquises : leur colonne de montant est vide, et l'app n'y touche "
+                "pas — leur ligne porte déjà des totaux. Ces actes n'entrent donc "
+                "dans aucun total du classeur.\n\n"
+                + "\n".join(
+                    f"- {d:%d/%m/%Y} : {n} en colonne **{compteur}**, "
+                    f"montant **{montant_col}** absent"
+                    for d, montant_col, compteur, n in absentes
+                ),
+                icon=":material/money_off:",
+            )
+
         ignorees = [(d, etat) for d, r, etat in rapport["lignes"] if etat != "écrite"]
         if ignorees:
             st.warning(

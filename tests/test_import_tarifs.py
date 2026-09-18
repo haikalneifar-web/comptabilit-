@@ -310,9 +310,88 @@ if boutons:
                  any("Mois comptable" in h.value for h in at.header),
                  str([h.value for h in at.header]))
 
+print("\n12. À l'écriture, une journée ouverte sans formule est rendue entière")
+# c'est la seule façon que le défaut se reproduise : saisir aujourd'hui une des
+# journées restées vides dont la colonne de montant n'a jamais eu de formule.
+xlsx_io.BACKUP_DIR = atelier          # pas de sauvegarde dans le dossier du projet
+
+ecriture = atelier / "ecriture.xlsx"
+wb5 = openpyxl.Workbook()
+ws5 = wb5.active
+ws5.title = SHEET_NAME
+for i in range(5):
+    # journées vides, donc ouvertes ; la deuxième n'a ni `K` ni `Q`
+    ligne(ws5, 4 + i, dt.date(2026, 9, 1) + dt.timedelta(days=i), {},
+          TARIFS_RECENTS, ("K", "Q") if i == 1 else ())
+wb5.save(ecriture)
+
+store.DB_PATH = atelier / "test5.db"
+conn5 = store.connect()
+store.init_db(conn5)
+xlsx_io.importer(conn5, chemin=ecriture)
+
+cible = dt.date(2026, 9, 2)
+verifier("la journée trouée est ouverte", not store.est_cloture(conn5, cible))
+j5 = store.lire_jour(conn5, cible)
+j5.star_n, j5.cat_pay_n, j5.pay_n = 2, 1, 4
+store.ecrire_jour(conn5, j5)
+
+rapport5 = xlsx_io.exporter(conn5, [store.lire_jour_corrige(conn5, cible)],
+                            chemin=ecriture)
+verifier("la journée est écrite", rapport5["ecrites"] == 1)
+posees = {col for d, col in rapport5["formules_posees"]}
+verifier("les deux formules manquantes sont posées", posees == {"K", "Q"},
+         f"({posees})")
+verifier("et rapportées sur la bonne journée",
+         {d for d, _ in rapport5["formules_posees"]} == {cible})
+verifier("rien n'est signalé comme resté sans montant",
+         rapport5["formules_absentes"] == [],
+         f"({rapport5['formules_absentes']})")
+
+relu = openpyxl.load_workbook(ecriture, data_only=False)[SHEET_NAME]
+verifier("la formule assurance est en place et au bon tarif",
+         relu["K5"].value == "=J5*70", f"({relu['K5'].value})")
+verifier("la formule cataracte aussi", relu["Q5"].value == "=P5*750",
+         f"({relu['Q5'].value})")
+verifier("le compteur est bien écrit en face", relu["J5"].value == 2,
+         f"({relu['J5'].value})")
+verifier("les journées voisines gardent leurs formules d'origine",
+         relu["K4"].value == "=J4*70" and relu["K6"].value == "=J6*70",
+         f"({relu['K4'].value}, {relu['K6'].value})")
+
+print("\n13. Une journée acquise n'est pas récrite en douce, elle est signalée")
+acquise = atelier / "acquise.xlsx"
+wb6 = openpyxl.Workbook()
+ws6 = wb6.active
+ws6.title = SHEET_NAME
+# une journée de 2018 qui porte des chiffres, dont un patient assurance sans `K`
+ligne(ws6, 4, dt.date(2018, 6, 4), {"C": 2, "L": 3, "J": 1}, TARIFS_ANCIENS, ("K",))
+ligne(ws6, 5, dt.date(2018, 6, 5), {"C": 1, "L": 2}, TARIFS_ANCIENS)
+wb6.save(acquise)
+
+store.DB_PATH = atelier / "test6.db"
+conn6 = store.connect()
+store.init_db(conn6)
+xlsx_io.importer(conn6, chemin=acquise)
+
+vieille = dt.date(2018, 6, 4)
+verifier("la journée est bien acquise", store.est_cloture(conn6, vieille))
+rapport6 = xlsx_io.exporter(conn6, [store.lire_jour_corrige(conn6, vieille)],
+                            chemin=acquise)
+verifier("aucune formule n'est posée sur une journée acquise",
+         rapport6["formules_posees"] == [], f"({rapport6['formules_posees']})")
+verifier("le trou est signalé, avec son compteur",
+         rapport6["formules_absentes"] == [(vieille, "K", "J", 1)],
+         f"({rapport6['formules_absentes']})")
+relu6 = openpyxl.load_workbook(acquise, data_only=False)[SHEET_NAME]
+verifier("la cellule vide le reste", relu6["K4"].value is None,
+         f"({relu6['K4'].value})")
+verifier("le total de la journée n'a pas bougé",
+         relu6["U4"].value == "=D4+F4+I4+K4+M4+O4+Q4+S4+T4+R4+W4",
+         f"({relu6['U4'].value})")
+
 print(f"\n{'=' * 50}\n{ok} réussis, {ko} échecs\n{'=' * 50}")
-conn.close()
-conn2.close()
-conn3.close()
+for c in (conn, conn2, conn3, conn5, conn6):
+    c.close()
 shutil.rmtree(atelier, ignore_errors=True)
 sys.exit(1 if ko else 0)
