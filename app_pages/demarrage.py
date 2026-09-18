@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pandas as pd
 import streamlit as st
 
 from app_utils import get_conn, montant
@@ -64,6 +65,13 @@ if st.button("Importer l'historique", icon=":material/download:", type="primary"
         "doublons": [[r, d.isoformat()] for r, d in rapport["doublons"]],
         "premiere": rapport["premiere"].isoformat() if rapport["premiere"] else None,
         "derniere": rapport["derniere"].isoformat() if rapport["derniere"] else None,
+        # gardé au registre : sans ça, le constat repart avec la page
+        "postes_sans_tarif": [
+            dict(p, premiere=p["premiere"].isoformat(),
+                 derniere=p["derniere"].isoformat(),
+                 tarifs={str(t): n for t, n in p["tarifs"].items()})
+            for p in rapport["postes_sans_tarif"]
+        ],
     })
 
     st.success(
@@ -90,6 +98,42 @@ if st.button("Importer l'historique", icon=":material/download:", type="primary"
             icon=":material/calculate:",
         )
 
+    if rapport["postes_sans_tarif"]:
+        postes = rapport["postes_sans_tarif"]
+        st.warning(
+            f"**Des actes comptés sans montant en face.** Sur "
+            f"{sum(p['journees'] for p in postes)} journées, un compteur est rempli "
+            "alors que sa colonne de montant est **vide — pas à zéro, sans formule "
+            "du tout**. Le classeur ne les valorise nulle part : la colonne `U` "
+            "additionne une cellule vide, ils ne sont donc dans aucun total, ni "
+            "ici ni dans le fichier.",
+            icon=":material/money_off:",
+        )
+        st.dataframe(
+            pd.DataFrame([
+                {
+                    "Poste": p["libelle"],
+                    "Colonnes": f"{p['compteur']} → {p['colonne']}",
+                    "Journées": p["journees"],
+                    "Actes": p["actes"],
+                    "Période": f"{p['premiere']:%m/%Y} → {p['derniere']:%m/%Y}",
+                    "Tarif voisin": " / ".join(
+                        f"{t:g}" for t in sorted(p["tarifs"]) if t is not None),
+                    "Manque au CA": montant(p["montant"]),
+                }
+                for p in postes
+            ]),
+            hide_index=True,
+            width="stretch",
+        )
+        st.caption(
+            "Les tarifs ci-dessus sont ceux des lignes voisines, et c'est celui-là "
+            "que le registre retient pour ces journées — pas le tarif d'aujourd'hui. "
+            "Les montants du classeur, eux, ne sont pas touchés : décider si ces "
+            "actes doivent être portés au CA est une rectification, à faire journée "
+            "par journée avec son motif."
+        )
+
     t = store.totaux(conn)
     cols = st.columns(4)
     cols[0].metric("Recettes cumulées", montant(t["recettes"] or 0))
@@ -97,5 +141,10 @@ if st.button("Importer l'historique", icon=":material/download:", type="primary"
     cols[2].metric("Patients", f"{int(t['patients'] or 0):,}".replace(",", " "))
     cols[3].metric("Journées actives", f"{int(t['jours_actifs'] or 0)}")
 
-    st.page_link("app_pages/saisie.py", label="Commencer la saisie",
-                 icon=":material/arrow_forward:")
+    # La navigation de ce passage-ci n'a qu'une page : les autres ne s'ouvrent
+    # qu'avec `import_fait`, que l'import vient tout juste de poser. Un lien
+    # direct vers la saisie échouerait donc ici même. Ce bouton relance l'app,
+    # qui s'ouvrira sur le mois à saisir — et laisse lire ce qui précède.
+    if st.button("Commencer la saisie", icon=":material/arrow_forward:",
+                 type="primary"):
+        st.rerun()

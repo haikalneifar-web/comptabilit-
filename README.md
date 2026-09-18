@@ -64,6 +64,13 @@ d'un mois déjà travaillé** est vide sans être à venir : elle garde le tarif
 le classeur a inscrit dans sa formule, celui de ses voisines. Sans cette borne,
 saisir un jour retrouvé de 2019 le compterait au prix d'aujourd'hui.
 
+Encore faut-il qu'il y ait une formule à lire. Quelques centaines de cellules de
+montant du classeur sont **vides — pas à zéro, sans formule du tout** : il n'y a
+alors aucun tarif inscrit nulle part. L'import prend celui de la ligne lisible la
+plus proche, celle d'avant à égalité de distance, plutôt que de retomber sur le
+tarif d'aujourd'hui. Là où le compteur en face est rempli, ce sont des actes que
+le classeur ne valorise pas : l'import les signale poste par poste, voir plus bas.
+
 Le point à connaître : le classeur est pré-rempli jusqu'au 23/01/2027, et ces
 lignes portent dans leurs formules le tarif qui avait cours quand elles ont été
 préparées (`=C123*72`). Y écrire seulement les compteurs ferait dire à Excel
@@ -221,11 +228,13 @@ python tests\test_rectifications.py   # registre figé, journal des corrections
 python tests\test_tarifs.py           # changement de prix, jusqu'à l'écriture Excel
 python tests\test_export.py           # PDF, Excel et CSV relus et vérifiés
 python tests\test_synchronisation.py  # le classeur modifié en dehors de l'app
+python tests\test_import_tarifs.py    # actes comptés sans montant, tarifs hérités
 python tests\test_pages.py            # rendu des six pages, sans navigateur
 ```
 
-Ils travaillent tous sur des **copies** de la base et du classeur ; les
-originaux ne sont jamais ouverts en écriture.
+Ils travaillent tous sur des **copies** de la base et du classeur — ou sur un
+classeur fabriqué pour l'occasion ; les originaux ne sont jamais ouverts en
+écriture.
 
 Le chemin du classeur se change dans `compta/config.py`, ou par la variable
 d'environnement `COMPTA_XLSX`.
@@ -238,5 +247,8 @@ d'environnement `COMPTA_XLSX`.
 - La colonne `W` (`=E×11`) ajoute un montant par patient en tiers payant qui n'apparaît dans aucun poste de consultation. Il entre dans les recettes et la caisse, pas dans le CA à déclarer.
 - La colonne `AC` (CA à déclarer) **exclut la colonne `Q`** (cataracte payante) : c'est ce qui produit l'écart de 254 572 TND entre recettes et CA déclaré sur l'ensemble de la période.
 - La colonne `V` (dépenses) est vide sur toutes les lignes : le classeur ne mesure aucun résultat, seulement un chiffre d'affaires.
-- **Deux journées** (21/03/2019 et 23/05/2019) portent une cataracte payante — 1 et 3 actes — pour des recettes nulles : sur ces lignes, la colonne `U` ne reprend pas `Q`. Candidates à rectification.
-- La dernière journée qui porte des chiffres est le **31/07/2026** ; tout ce qui suit dans le classeur est pré-rempli à zéro.
+- **97 actes comptés sans montant en face, ≈ 12 015 TND jamais portés au CA.** Sur 76 journées de 2018–2019, un compteur est rempli alors que sa cellule de montant est **vide — pas à zéro, sans formule du tout**. La colonne `U` additionne alors une cellule vide : ces actes ne sont dans aucun total, ni dans le classeur ni ici.
+  - `P` → `Q` cataracte payante : **8 journées, 15 actes**, du 21/02/2019 au 18/07/2019, soit 9 000 TND au tarif voisin de 600. Deux de ces journées (21/03/2019 et 23/05/2019) affichent des recettes strictement nulles alors qu'elles portent 1 et 3 cataractes.
+  - `J` → `K` assurance : **68 journées, 82 actes**, du 04/06/2018 au 31/07/2019, soit 3 015 TND aux tarifs voisins (30 puis 45).
+  - L'import les signale et **hérite du tarif des lignes voisines** au lieu de retomber sur le tarif d'aujourd'hui — sans quoi ces actes seraient valorisés à 70 et 750 le jour où l'une de ces journées serait rectifiée. Les montants du classeur, eux, ne sont pas touchés : les porter au CA est une rectification, journée par journée, avec son motif.
+- La dernière journée qui porte des chiffres est le **31/08/2026** ; tout ce qui suit dans le classeur est pré-rempli à zéro.

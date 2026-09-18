@@ -19,7 +19,7 @@ from openpyxl.utils import column_index_from_string
 
 from .config import (BACKUP_DIR, COL_DATE, COL_JOUR, JOURS_FR, SAISIE_COLS,
                      SHEET_NAME, TARIF_COLS, XLSX_PATH)
-from .model import COMPTEURS, MONTANTS, TARIFS_DEFAUT, Journee
+from .model import COMPTEURS, LIBELLES_TARIFS, MONTANTS, TARIFS_DEFAUT, Journee
 from .store import ecrire_jour, meta_get, meta_set
 
 _RE_TARIF = re.compile(r"^=\s*[A-Z]{1,3}\d+\s*\*\s*([0-9]+(?:[.,][0-9]+)?)\s*$")
@@ -61,6 +61,50 @@ def _tarif_depuis_formule(valeur, montant_cache, compteur) -> float | None:
         if montant:
             return montant / compteur
     return None
+
+
+def _heriter_des_voisines(lus: list[float | None]) -> list[float | None]:
+    """Comble les tarifs illisibles par celui de la ligne voisine la plus proche.
+
+    Certaines cellules de montant du classeur sont **vides — pas à zéro, sans
+    formule du tout** : il n'y a alors aucun tarif à lire. Retomber sur
+    `TARIFS_DEFAUT` donnerait à une journée de 2018 le prix de 2026 ; le tarif
+    de ses voisines immédiates est le sien, à quelques jours près.
+
+    Les listes sont dans l'ordre des lignes du classeur, donc chronologiques :
+    on prend la valeur lisible la plus proche, celle d'avant en cas d'égalité —
+    un tarif vaut jusqu'à ce qu'il change. `None` subsiste seulement si la
+    colonne n'est lisible nulle part ; l'appelant retombe alors sur le défaut.
+    """
+    n = len(lus)
+    avant: list[tuple[float, int] | None] = [None] * n
+    connu, distance = None, 0
+    for i in range(n):
+        if lus[i] is not None:
+            connu, distance = lus[i], 0
+        else:
+            distance += 1
+            avant[i] = (connu, distance) if connu is not None else None
+
+    apres: list[tuple[float, int] | None] = [None] * n
+    connu, distance = None, 0
+    for i in range(n - 1, -1, -1):
+        if lus[i] is not None:
+            connu, distance = lus[i], 0
+        else:
+            distance += 1
+            apres[i] = (connu, distance) if connu is not None else None
+
+    comble = list(lus)
+    for i in range(n):
+        if lus[i] is not None:
+            continue
+        a, b = avant[i], apres[i]
+        if a and (b is None or a[1] <= b[1]):
+            comble[i] = a[0]
+        elif b:
+            comble[i] = b[0]
+    return comble
 
 
 def sauvegarder(chemin: Path = XLSX_PATH) -> Path:
@@ -130,7 +174,12 @@ def etat_synchronisation(conn, chemin: Path = XLSX_PATH) -> dict:
 def importer(conn, chemin: Path = XLSX_PATH, progress=None) -> dict:
     """Charge tout l'historique du classeur dans la base.
 
-    Retourne un rapport : lignes lues, doublons ignorés, bornes de dates.
+    En trois temps : on lit tout le classeur, puis on comble les tarifs qu'aucune
+    formule ne donnait — un tarif ne se devine qu'une fois les voisines connues —
+    puis on écrit les journées dans le registre.
+
+    Retourne un rapport : lignes lues, doublons ignorés, bornes de dates, et les
+    postes dont le tarif a dû être hérité alors qu'ils portaient des actes.
     """
     wb_f = openpyxl.load_workbook(chemin, data_only=False)
     wb_v = openpyxl.load_workbook(chemin, data_only=True)
@@ -139,12 +188,16 @@ def importer(conn, chemin: Path = XLSX_PATH, progress=None) -> dict:
     vues: dict[dt.date, int] = {}
     doublons: list[tuple[int, dt.date]] = []
     ab_divergents: list[int] = []
-    importees = 0
     total = ws_f.max_row
+
+    # --- 1. lecture ----------------------------------------------------------
+    lues: list[tuple[Journee, dict]] = []
+    tarifs_lus: dict[str, list[float | None]] = {cle: [] for cle in _IDX_TARIF}
+    compteurs_tarif: dict[str, list[int]] = {cle: [] for cle in _IDX_TARIF}
 
     for r in range(1, total + 1):
         if progress and r % 400 == 0:
-            progress(r / total)
+            progress(0.9 * r / total)
         brut = ws_f.cell(row=r, column=_IDX_DATE).value
         if not isinstance(brut, dt.datetime):
             continue
@@ -160,17 +213,14 @@ def importer(conn, chemin: Path = XLSX_PATH, progress=None) -> dict:
         for cle in MONTANTS:
             j.__setattr__(cle, _nombre(ws_f.cell(row=r, column=_IDX[cle]).value))
 
-        tarifs = dict(TARIFS_DEFAUT)
         for cle, (ic, icnt) in _IDX_TARIF.items():
-            compteur = _nombre(ws_f.cell(row=r, column=icnt).value)
-            t = _tarif_depuis_formule(
+            compteur = int(_nombre(ws_f.cell(row=r, column=icnt).value))
+            tarifs_lus[cle].append(_tarif_depuis_formule(
                 ws_f.cell(row=r, column=ic).value,
                 ws_v.cell(row=r, column=ic).value,
                 compteur,
-            )
-            if t is not None:
-                tarifs[cle] = t
-        j.tarifs = tarifs
+            ))
+            compteurs_tarif[cle].append(compteur)
 
         # Une ligne qui porte des chiffres est un fait acquis : elle arrive
         # clôturée et ne se corrigera plus que par rectification motivée. Le
@@ -179,34 +229,96 @@ def importer(conn, chemin: Path = XLSX_PATH, progress=None) -> dict:
         j.cloture = not j.vide
 
         # Montants : on reprend le cache d'Excel, pour rester fidèle au classeur
-        # même là où d'anciennes lignes utilisent une variante de formule.
-        calc = {}
+        # même là où d'anciennes lignes utilisent une variante de formule. Une
+        # cellule non numérique attend le calcul du modèle, qui a besoin des
+        # tarifs : le tour de cette journée viendra au troisième temps.
+        cache = {}
         for cle, ic in _IDX_CALC.items():
             v = ws_v.cell(row=r, column=ic).value
-            calc[cle] = _nombre(v) if isinstance(v, (int, float)) else float(getattr(j, cle))
+            cache[cle] = _nombre(v) if isinstance(v, (int, float)) else None
+
+        lues.append((j, cache))
+
+    # --- 2. tarifs hérités ---------------------------------------------------
+    combles = {cle: _heriter_des_voisines(lus) for cle, lus in tarifs_lus.items()}
+    manquants = _postes_sans_tarif(lues, tarifs_lus, combles, compteurs_tarif)
+    herites = sum(1 for cle, lus in tarifs_lus.items()
+                  for i, t in enumerate(lus)
+                  if t is None and combles[cle][i] is not None)
+
+    # --- 3. écriture ---------------------------------------------------------
+    for i, (j, cache) in enumerate(lues):
+        if progress and i % 400 == 0:
+            progress(0.9 + 0.1 * i / len(lues))
+        j.tarifs = {
+            cle: defaut if combles[cle][i] is None else combles[cle][i]
+            for cle, defaut in TARIFS_DEFAUT.items()
+        }
+
+        calc = {cle: float(getattr(j, cle)) if v is None else v
+                for cle, v in cache.items()}
         calc["actes_chirurgie"] = j.actes_chirurgie
 
         # Exception : le nombre de patients. La colonne AB existe en deux versions
         # dans le classeur (`=C+E+H+J+L` et `=C+E+H`) ; la seconde oublie les
         # assurances et le payant. On retient toujours le compte réel.
         if abs(calc["patients"] - j.patients) > 0.5:
-            ab_divergents.append(r)
+            ab_divergents.append(j.ligne_xlsx)
         calc["patients"] = float(j.patients)
 
         ecrire_jour(conn, j, calc=calc, marquer=False, commit=False, force=True)
-        importees += 1
 
     conn.commit()
     marquer_synchronise(conn, chemin)
     dates = sorted(vues)
     return {
-        "lignes": importees,
+        "lignes": len(lues),
         "doublons": doublons,
         "ab_divergents": ab_divergents,
+        "tarifs_herites": herites,
+        "postes_sans_tarif": manquants,
         "premiere": dates[0] if dates else None,
         "derniere": dates[-1] if dates else None,
         "derniere_ligne": max(vues.values()) if vues else 0,
     }
+
+
+def _postes_sans_tarif(lues: list[tuple[Journee, dict]],
+                       tarifs_lus: dict[str, list[float | None]],
+                       combles: dict[str, list[float | None]],
+                       compteurs: dict[str, list[int]]) -> list[dict]:
+    """Les postes où des actes ont été comptés sans qu'aucun montant les valorise.
+
+    Un compteur rempli en face d'une colonne de montant vide, c'est du chiffre
+    d'affaires que le classeur n'additionne nulle part : la colonne `U` y ajoute
+    une cellule vide. L'import ne tranche pas ce qu'il faut en faire — les
+    montants restent ceux du classeur — mais il refuse de passer dessus en
+    silence. Le montant annoncé est celui qu'on obtiendrait au tarif des lignes
+    voisines : la meilleure lecture disponible, pas une correction appliquée.
+    """
+    rapport = []
+    for cle, lus in tarifs_lus.items():
+        touches = [i for i, t in enumerate(lus) if t is None and compteurs[cle][i]]
+        if not touches:
+            continue
+        par_tarif: dict[float | None, int] = {}
+        for i in touches:
+            t = combles[cle][i]
+            par_tarif[t] = par_tarif.get(t, 0) + compteurs[cle][i]
+        rapport.append({
+            "cle": cle,
+            "libelle": LIBELLES_TARIFS[cle],
+            "colonne": TARIF_COLS[cle][0],
+            "compteur": TARIF_COLS[cle][1],
+            "journees": len(touches),
+            "actes": sum(compteurs[cle][i] for i in touches),
+            "premiere": lues[touches[0]][0].date,
+            "derniere": lues[touches[-1]][0].date,
+            "lignes": [lues[i][0].ligne_xlsx for i in touches],
+            "tarifs": par_tarif,
+            "montant": sum(t * n for t, n in par_tarif.items() if t is not None),
+        })
+    return sorted(rapport, key=lambda p: -p["montant"])
 
 
 # --- export ------------------------------------------------------------------
