@@ -71,9 +71,10 @@ exe = EXE(
     strip=False,
     upx=False,
     runtime_tmpdir=None,
-    # une fenêtre de console reste ouverte derrière le navigateur : c'est elle
-    # qui porte les messages du serveur, et la fermer arrête l'app proprement
-    console=True,
+    # pas de console : le logiciel s'ouvre dans sa fenêtre et se ferme avec
+    # elle. Une panne au démarrage n'est donc pas muette pour autant —
+    # `lancer.py` la met en boîte de dialogue et dans `erreur_demarrage.txt`.
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

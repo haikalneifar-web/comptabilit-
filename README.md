@@ -25,15 +25,36 @@ pyinstaller registre.spec --noconfirm
 ```
 
 Sort `dist\Registre du cabinet.exe`, **95 Mo**, qui contient Python, Streamlit et
-l'app. Un double-clic démarre le serveur et ouvre le navigateur ; la fenêtre de
-console qui reste derrière porte les messages du serveur, et la fermer arrête
-l'app. Comptez une trentaine de secondes au premier écran : l'exe se déplie dans
-un dossier temporaire à chaque lancement.
+l'app. Un double-clic ouvre **une fenêtre d'application** — pas d'onglets, pas de
+barre d'adresse, son propre bouton dans la barre des tâches — et la fermer arrête
+le serveur. Comptez une trentaine de secondes au premier écran : l'exe se déplie
+dans un dossier temporaire à chaque lancement.
 
-**Où le poser.** L'exe crée `data\` et `sauvegardes\` **à côté de lui**. Posé
-dans le dossier du projet, il reprend le registre existant ; posé ailleurs, il
-démarre sur un registre vide et propose la reprise de l'historique. Le classeur,
-lui, est toujours lu là où `COMPTA_XLSX` ou `compta/config.py` le désigne.
+Streamlit est un framework web : son interface est nécessairement une page,
+servie en local sur `localhost`. Ce que fait `lancer.py`, c'est la montrer dans
+Edge (ou Chrome) en **mode application**, ce qui en retire tout l'habillage de
+navigateur. Ni l'un ni l'autre n'étant installé, on retombe sur le navigateur par
+défaut, et il faut alors arrêter le logiciel à la main.
+
+Le logiciel n'a pas de console : une panne au démarrage s'affiche en boîte de
+dialogue et s'écrit dans `erreur_demarrage.txt`, à côté de l'exe. Lancé deux
+fois, il ouvre simplement une fenêtre de plus sur l'instance déjà en place.
+
+**Où vit le registre.** À une adresse fixe, indépendante de l'endroit où se
+trouve l'exe :
+
+```
+%LOCALAPPDATA%\Registre du cabinet\data\compta.db
+```
+
+L'historique ne se reprend donc **qu'une fois**. Déplacer l'exe, le lancer depuis
+un raccourci ou le refabriquer ne change rien : il retrouve le même registre.
+C'est aussi le fichier à sauvegarder. Lancé depuis les sources (`streamlit run`
+ou `python lancer.py`), c'est en revanche le `data\` du projet qui sert — les
+deux registres sont distincts.
+
+Le classeur, lui, est toujours lu là où `COMPTA_XLSX` ou `compta/config.py` le
+désigne.
 
 `lancer.py` est le point d'entrée de l'exe, et marche aussi depuis les sources
 (`python lancer.py`) : c'est le même démarrage que `streamlit run`, en passant

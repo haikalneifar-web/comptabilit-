@@ -15,10 +15,15 @@ from pathlib import Path
 
 # Monté en exe (PyInstaller), le code est déplié dans un dossier temporaire que
 # Windows efface à la fermeture : y ranger le registre le ferait disparaître à
-# chaque sortie. On s'ancre alors sur le dossier de l'exe lui-même, pour que
-# `data/` et `sauvegardes/` soient là où l'utilisateur les voit.
+# chaque sortie. Le ranger à côté de l'exe ne vaut pas mieux — déplacer l'exe,
+# ou le lancer depuis un raccourci posé ailleurs, repartirait sur un registre
+# vide et redemanderait tout l'historique. Le registre a donc **une adresse
+# fixe**, celle des données applicatives de l'utilisateur, et l'exe la retrouve
+# où qu'il soit.
 if getattr(sys, "frozen", False):
-    PROJECT_DIR = Path(sys.executable).resolve().parent
+    _donnees = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+    PROJECT_DIR = Path(_donnees or Path.home()) / "Registre du cabinet"
+    PROJECT_DIR.mkdir(parents=True, exist_ok=True)
 else:
     PROJECT_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_DIR / "data"
