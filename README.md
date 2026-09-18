@@ -17,6 +17,28 @@ classeur) et `reportlab` (export PDF).
 pip install streamlit pandas altair openpyxl reportlab
 ```
 
+### En un exe, sans rien installer
+
+```powershell
+pip install pyinstaller
+pyinstaller registre.spec --noconfirm
+```
+
+Sort `dist\Registre du cabinet.exe`, **95 Mo**, qui contient Python, Streamlit et
+l'app. Un double-clic démarre le serveur et ouvre le navigateur ; la fenêtre de
+console qui reste derrière porte les messages du serveur, et la fermer arrête
+l'app. Comptez une trentaine de secondes au premier écran : l'exe se déplie dans
+un dossier temporaire à chaque lancement.
+
+**Où le poser.** L'exe crée `data\` et `sauvegardes\` **à côté de lui**. Posé
+dans le dossier du projet, il reprend le registre existant ; posé ailleurs, il
+démarre sur un registre vide et propose la reprise de l'historique. Le classeur,
+lui, est toujours lu là où `COMPTA_XLSX` ou `compta/config.py` le désigne.
+
+`lancer.py` est le point d'entrée de l'exe, et marche aussi depuis les sources
+(`python lancer.py`) : c'est le même démarrage que `streamlit run`, en passant
+par le bootstrap de Streamlit plutôt que par la ligne de commande.
+
 ## Le rythme de travail
 
 La saisie se fait **en fin de mois comptable**, pas au jour le jour. L'app
@@ -214,6 +236,8 @@ Au-delà du 23/01/2027 — dernière ligne pré-remplie du classeur — l'app cr
 ```
 streamlit_app.py      navigation
 app_utils.py          connexion partagée, bandeau de totaux, formulaire de rectification
+lancer.py             point d'entrée de l'exe (et de `python lancer.py`)
+registre.spec         recette PyInstaller
 app_pages/            une page par écran
 compta/
   config.py           chemins, colonnes du classeur, postes

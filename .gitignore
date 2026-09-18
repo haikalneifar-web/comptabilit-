@@ -8,6 +8,10 @@ sauvegardes/
 *.xlsx
 *.csv
 
+# L'exe et ses intermédiaires : 95 Mo qu'on refabrique en une commande
+build/
+dist/
+
 __pycache__/
 *.py[cod]
 .venv/

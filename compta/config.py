@@ -8,11 +8,19 @@ reste (montants, recettes, caisse, TVA) est recalculé par Excel.
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 # --- chemins -----------------------------------------------------------------
 
-PROJECT_DIR = Path(__file__).resolve().parent.parent
+# Monté en exe (PyInstaller), le code est déplié dans un dossier temporaire que
+# Windows efface à la fermeture : y ranger le registre le ferait disparaître à
+# chaque sortie. On s'ancre alors sur le dossier de l'exe lui-même, pour que
+# `data/` et `sauvegardes/` soient là où l'utilisateur les voit.
+if getattr(sys, "frozen", False):
+    PROJECT_DIR = Path(sys.executable).resolve().parent
+else:
+    PROJECT_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_DIR / "data"
 BACKUP_DIR = PROJECT_DIR / "sauvegardes"
 DB_PATH = DATA_DIR / "compta.db"
