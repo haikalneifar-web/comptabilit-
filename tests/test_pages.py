@@ -103,6 +103,22 @@ verifier("toutes les journées du mois sont affichées",
 verifier("la page d'accueil ne porte que la grille de saisie",
          len(at.dataframe) == 1, f"({len(at.dataframe)} tableaux)")
 
+print("\n0 a. L'ordre des onglets")
+# L'ordre de la barre du haut est un choix de l'utilisateur, pas un accident de
+# rédaction. `st.navigation` ne l'expose pas à AppTest : on le relit à la source.
+import re as _re_nav  # noqa: E402
+
+_source_nav = (PROJET / "streamlit_app.py").read_text(encoding="utf-8")
+# « Démarrage » n'est pas un onglet : c'est la page unique tant que le registre
+# n'a pas été importé
+onglets = [p for p in _re_nav.findall(r'st\.Page\("app_pages/(\w+)\.py"',
+                                      _source_nav) if p != "demarrage"]
+verifier("saisie, totaux, rectifications ouvrent la barre",
+         onglets[:3] == ["journal", "totaux", "rectifications"],
+         f"({onglets})")
+verifier("les huit pages sont déclarées une fois chacune",
+         len(onglets) == len(set(onglets)) == 8, f"({onglets})")
+
 print("\n0 bis. Un mois au-delà de la dernière ligne du classeur")
 at = lancer(etat={"mois_travail": (2027, 3)})
 verifier("aucune exception", not at.exception, str(at.exception))

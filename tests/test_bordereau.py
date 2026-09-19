@@ -306,8 +306,14 @@ verifier("l'écart entre deux éditions se lit",
 store.enregistrer_bordereau(conn, 2026, 7, "corrigé", "abc123",
                             bordereau.totaux(store.mois_en_journees(conn, 2026, 7)))
 derniers = store.derniers_bordereaux_par_mois(conn)
+# la base de travail peut déjà porter de vrais bordereaux — l'app sert : on
+# vérifie ce que ce test a ajouté, pas l'état absolu de la table
 verifier("chaque mois n'apparaît qu'une fois dans la vue d'évolution",
-         len(derniers) == 2 and set(derniers) == {"2026-07", "2026-08"},
+         {"2026-07", "2026-08"} <= set(derniers)
+         and len(derniers) == len(set(derniers)),
+         f"({sorted(derniers)})")
+verifier("les trois éditions de ce test se replient sur deux mois",
+         len([m for m in derniers if m in {"2026-07", "2026-08"}]) == 2,
          f"({sorted(derniers)})")
 verifier("c'est la dernière édition du mois qui y figure",
          derniers["2026-08"]["registre"] == "réel")

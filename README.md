@@ -83,13 +83,16 @@ saisies à l'unité.
 
 ## Les huit pages
 
+Dans l'ordre de la barre du haut — saisir, lire ce qui en sort, corriger — et un
+test tient cet ordre : `st.navigation` ne l'expose pas, il se relit à la source.
+
 | Page | À quoi elle sert |
 |---|---|
 | **Mois comptable** | L'écran de saisie, ouvert sur le mois à reprendre : une grille pleine largeur, une ligne par journée, et les totaux du mois en tuiles sous le tableau. C'est là qu'on saisit, qu'on corrige et qu'on rectifie. |
-| **Totaux du mois** | Les **seize colonnes** que le classeur calcule, journée par journée, en deux tableaux : ce que chaque poste rapporte, puis ce que le classeur en tire. Rien ne s'y saisit ; la saisie en attente sur l'écran précédent y est comprise. |
+| **Totaux du mois** | Les **seize colonnes** que le classeur calcule : leurs totaux du mois en tuiles, et le détail journée par journée pour ce que le classeur en tire. Rien ne s'y saisit ; la saisie en attente sur l'écran précédent y est comprise. |
+| **Rectifications** | Deux tableaux côte à côte : à gauche le registre réel, non modifiable ; à droite le corrigé, qu'on modifie. L'écart devient une rectification motivée. Suivent le journal des corrections du mois et leur effet sur les totaux. |
 | **Saisie du jour** | En appoint : un bouton par acte au fil de la journée, ou les totaux du jour d'un coup. |
 | **Bordereaux** | Édite le bordereau du mois — le mois du registre dans un classeur autonome, montants en formules — le range, en garde l'historique et montre l'évolution. |
-| **Rectifications** | Deux tableaux côte à côte : à gauche le registre réel, non modifiable ; à droite le corrigé, qu'on modifie. L'écart devient une rectification motivée. Suivent le journal des corrections du mois et leur effet sur les totaux. |
 | **Tableau de bord** | Évolution mensuelle, composition des recettes, volume de cataractes, récapitulatif annuel. |
 | **Classeur Excel** | Écrit les journées saisies dans le `.xlsx`, signale si le fichier a changé sans l'app, liste les sauvegardes, permet de réimporter. |
 | **Tarifs** | Tarifs unitaires des nouvelles journées, et historique des tarifs relevés dans le classeur. |
