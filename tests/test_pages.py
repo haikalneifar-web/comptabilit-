@@ -743,8 +743,9 @@ at = lancer("app_pages/bordereaux.py", {"mois_travail": (annee_test, mois_test)}
 verifier("aucune exception", not at.exception, str(at.exception))
 verifier("la page dit que ce ne sont pas le registre",
          any("pas le registre" in c.value for c in at.caption), "(avertissement absent)")
-lire_dossier = next((b for b in at.button
-                     if "dossier du comptable" in b.label), None)
+# le libellé dit « Lire » ou « Relire » selon qu'un passage a déjà eu lieu — et
+# la base de test est une copie de la vraie, qui peut en porter un
+lire_dossier = next((b for b in at.button if "dossier" in b.label), None)
 verifier("le dossier du comptable se lit depuis la page",
          lire_dossier is not None, f"({[b.label for b in at.button]})")
 
@@ -772,6 +773,12 @@ verifier("la comparaison s'affiche",
 verifier("elle montre le chiffre du fichier",
          (m := metrique(at, "CA à déclarer transmis")) is not None
          and "2 800" in m.value, f"({m.value if m else None})")
+verifier("l'écart est lisible : milliers espacés et unité",
+         m is not None and m.delta.endswith(" TND") and "," not in m.delta,
+         f"({m.delta if m else None})")
+verifier("un graphe d'évolution est tracé", len(at.get("vega_lite_chart")) > 0)
+# le choix des mois tracés se vérifie sur `bordereau.mois_a_tracer`,
+# dans test_bordereau : ici on s'assure seulement que le graphe existe
 
 print(f"\n{'=' * 50}\n{ok} réussis, {ko} échecs\n{'=' * 50}")
 sys.exit(1 if ko else 0)

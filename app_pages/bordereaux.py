@@ -406,16 +406,15 @@ if fiches:
                        help="Ce fichier ne porte pas cette colonne.")
             continue
         ecart = float(envoye[cle]) - au_registre
+        chiffre = (lambda v: f"{int(v)}") if cle == "patients" else montant
         col.metric(
-            f"{libelle} transmis",
-            f"{int(envoye[cle])}" if cle == "patients"
-            else montant(float(envoye[cle])),
-            delta=(f"{ecart:+.0f}".replace(",", " ")
+            f"{libelle} transmis", chiffre(float(envoye[cle])),
+            delta=(f"{ecart:+,.0f}".replace(",", " ")
+                   + ("" if cle == "patients" else " TND")
                    if abs(ecart) > 0.5 else "identique au registre"),
             delta_color="normal" if abs(ecart) > 0.5 else "off",
             help=f"Écart avec le registre {nom_registre}, qui dit "
-                 + (f"{int(au_registre)}" if cle == "patients"
-                    else montant(au_registre)) + ".",
+                 f"{chiffre(au_registre)}.",
         )
 else:
     st.caption(
@@ -430,7 +429,7 @@ edites = store.derniers_bordereaux_par_mois(conn)
 periodes = {"24 derniers mois": 24, "5 dernières années": 60, "Tout l'historique": None}
 choix = st.segmented_control("Période", list(periodes), default="24 derniers mois",
                              key="periode_bordereaux", label_visibility="collapsed")
-serie = list(agregats.values())
+serie = bordereau.mois_a_tracer(agregats.values(), transmis)
 limite = periodes.get(choix)
 if limite:
     serie = serie[-limite:]

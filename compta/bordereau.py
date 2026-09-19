@@ -179,6 +179,18 @@ def totaux(journees: list[Journee]) -> dict[str, float]:
     return resultat
 
 
+def mois_a_tracer(agregats, transmis=()) -> list[dict]:
+    """Les mois qui méritent une courbe : ceux qui portent quelque chose.
+
+    Le classeur est pré-rempli de lignes à zéro jusqu'au 23/01/2027 ; ces mois
+    entrent dans les agrégats et feraient plonger les courbes à zéro, ce qui se
+    lit comme un effondrement des recettes. Un mois reste s'il a des recettes
+    au registre, ou un classeur transmis au comptable.
+    """
+    return [r for r in agregats
+            if (r.get("recettes") or 0) > 0 or r.get("mois") in transmis]
+
+
 def tarifs_du_mois(journees: list[Journee]) -> dict[str, list[float]]:
     """Les tarifs rencontrés dans le mois, poste par poste.
 

@@ -494,6 +494,32 @@ verifier("son mois n'est plus au tableau",
 verifier("le dossier réel du comptable n'a pas bougé de place",
          dc.RACINE == dc_racine, f"({dc.RACINE})")
 
+print("\n11 ter. Les mois tracés sur la courbe d'évolution")
+# Le classeur est pré-rempli à zéro jusqu'au 23/01/2027 : ces mois feraient
+# plonger les courbes, et la chute se lirait comme un effondrement.
+agregats_essai = [
+    {"mois": "2026-06", "recettes": 30000.0},
+    {"mois": "2026-07", "recettes": 35000.0},
+    {"mois": "2026-08", "recettes": 31955.0},
+    {"mois": "2026-09", "recettes": 0.0},
+    {"mois": "2026-10", "recettes": 0.0},
+    {"mois": "2026-11", "recettes": None},
+]
+traces = bordereau.mois_a_tracer(agregats_essai)
+verifier("les mois sans recette sortent de la courbe",
+         [r["mois"] for r in traces] == ["2026-06", "2026-07", "2026-08"],
+         f"({[r['mois'] for r in traces]})")
+verifier("un montant absent ne fait pas tomber la fonction",
+         all(r["mois"] != "2026-11" for r in traces))
+traces = bordereau.mois_a_tracer(agregats_essai, {"2026-10"})
+verifier("un mois sans recette mais transmis reste tracé",
+         "2026-10" in [r["mois"] for r in traces],
+         f"({[r['mois'] for r in traces]})")
+verifier("un mois vide et non transmis reste écarté",
+         "2026-09" not in [r["mois"] for r in traces])
+verifier("l'ordre des mois est conservé",
+         [r["mois"] for r in traces] == sorted(r["mois"] for r in traces))
+
 print("\n12. Le classeur du cabinet n'est jamais touché")
 source = (PROJET / "compta" / "bordereau.py").read_text(encoding="utf-8")
 verifier("le module ne connaît pas le chemin du classeur",
