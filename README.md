@@ -85,13 +85,31 @@ saisies à l'unité.
 
 | Page | À quoi elle sert |
 |---|---|
-| **Mois comptable** | L'écran de travail : à gauche les colonnes de saisie, éditables ; à droite les colonnes calculées, qui suivent la frappe. C'est là qu'on saisit, qu'on corrige et qu'on rectifie. |
+| **Mois comptable** | L'écran de travail, ouvert sur le mois à saisir : un bandeau de six totaux, puis à gauche les colonnes de saisie, éditables, à droite les colonnes calculées, qui suivent la frappe. C'est là qu'on saisit, qu'on corrige et qu'on rectifie. |
 | **Saisie du jour** | En appoint : un bouton par acte au fil de la journée, ou les totaux du jour d'un coup. |
 | **Bordereaux** | Édite le bordereau du mois — le mois du registre dans un classeur autonome, montants en formules — le range, en garde l'historique et montre l'évolution. |
 | **Rectifications** | Deux tableaux côte à côte : à gauche le registre réel, non modifiable ; à droite le corrigé, qu'on modifie. L'écart devient une rectification motivée. Suivent le journal des corrections du mois et leur effet sur les totaux. |
 | **Tableau de bord** | Évolution mensuelle, composition des recettes, volume de cataractes, récapitulatif annuel. |
 | **Classeur Excel** | Écrit les journées saisies dans le `.xlsx`, signale si le fichier a changé sans l'app, liste les sauvegardes, permet de réimporter. |
 | **Tarifs** | Tarifs unitaires des nouvelles journées, et historique des tarifs relevés dans le classeur. |
+
+### La mise en page de l'écran de saisie
+
+Un **seul bandeau de six tuiles** — patients, chirurgie, recettes, CA déclaré,
+caisse, dû CNAM — surmonte les deux tableaux, qui démarrent donc à la même
+ligne. Sous les tuiles, une ligne de détail (cataractes, laser, divers,
+dépenses) et une ligne d'état (journées renseignées, rectifiées, à créer).
+
+Les **largeurs de colonnes sont posées en pixels**, pas laissées au calcul
+automatique : à douze colonnes dans la grille de gauche, les en-têtes se
+faisaient rogner (« Rembo », « Catarac », « Laser d »). Les libellés y sont
+raccourcis, le nom entier reste dans l'infobulle, et le partage 1,85 contre 1
+entre les deux tableaux est calculé sur la somme de ces largeurs. `Caisse` et
+`Dû CNAM` ne figurent plus dans le tableau calculé — ils sont au bandeau — mais
+restent dans l'export.
+
+Ce budget de largeur est **tenu par un test** : ajouter une colonne sans
+rééquilibrer fait échouer la suite au lieu de rogner un en-tête en silence.
 
 ## Quand un tarif change
 
