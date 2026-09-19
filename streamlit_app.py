@@ -54,6 +54,8 @@ else:
                 icon=":material/calendar_month:", default=True),
         st.Page("app_pages/saisie.py", title="Saisie du jour",
                 icon=":material/add_circle:"),
+        st.Page("app_pages/bordereaux.py", title="Bordereaux",
+                icon=":material/description:"),
         st.Page("app_pages/rectifications.py", title=titre_rectifs,
                 icon=":material/edit_note:"),
         st.Page("app_pages/tableau_bord.py", title="Tableau de bord",

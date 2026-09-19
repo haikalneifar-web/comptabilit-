@@ -20,6 +20,7 @@ dernière rectification enregistrée.
 
 from __future__ import annotations
 
+import calendar
 import datetime as dt
 import json
 import sqlite3
@@ -97,6 +98,21 @@ def init_db(conn: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
     """)
+    # Journal des bordereaux édités : une ligne par édition, jamais écrasée.
+    # Rééditer un mois après une rectification ajoute une ligne, et l'écart
+    # entre deux éditions se lit dans leurs totaux.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS bordereaux (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            mois TEXT NOT NULL,
+            registre TEXT NOT NULL,
+            fichier TEXT,
+            empreinte TEXT NOT NULL,
+            totaux TEXT NOT NULL,
+            edite_le TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_bordereaux_mois ON bordereaux(mois)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_actes_date ON actes(date)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jours_export ON jours(a_exporter)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_rectif_date ON rectifications(date, champ)")
@@ -642,6 +658,83 @@ def ligne_vide(date: dt.date, tarifs: dict[str, float]) -> dict:
             "updated_at": None, "absente": True,
         }
     )
+
+
+# --- bordereaux mensuels -----------------------------------------------------
+
+def mois_en_journees(conn, annee: int, mois: int, corrige: bool = True,
+                     tarifs: dict[str, float] | None = None) -> list[Journee]:
+    """Le mois entier en journées calculables, du 1er au dernier jour.
+
+    Le mois se construit sur le calendrier, pas sur les lignes du registre : une
+    journée absente — le classeur s'arrête au 23/01/2027 — devient une journée à
+    zéro, pour que le bordereau ait autant de lignes que le mois a de jours.
+    """
+    tarifs = tarifs or tarifs_courants(conn)
+    depuis = frontiere_tarifs(conn)
+    debut = dt.date(annee, mois, 1)
+    fin = dt.date(annee, mois, calendar.monthrange(annee, mois)[1])
+
+    connues = {r["date"]: r for r in journal(conn, debut, fin, corrige=corrige)}
+    return [
+        vers_journee(connues.get(d.isoformat()) or ligne_vide(d, tarifs),
+                     tarifs, depuis)
+        for d in (debut + dt.timedelta(days=n) for n in range((fin - debut).days + 1))
+    ]
+
+
+def enregistrer_bordereau(conn, annee: int, mois: int, registre: str,
+                          empreinte: str, totaux_mois: dict,
+                          fichier: str | None = None) -> int:
+    """Consigne une édition de bordereau. Rien ne remplace une édition passée."""
+    cur = conn.execute(
+        "INSERT INTO bordereaux(mois, registre, fichier, empreinte, totaux, edite_le) "
+        "VALUES(?,?,?,?,?,?)",
+        (f"{annee}-{mois:02d}", registre, fichier, empreinte,
+         json.dumps(totaux_mois),
+         dt.datetime.now().isoformat(timespec="seconds")),
+    )
+    conn.commit()
+    return int(cur.lastrowid)
+
+
+def _vers_bordereau(r: sqlite3.Row) -> dict:
+    return dict(r) | {"totaux": json.loads(r["totaux"])}
+
+
+def bordereaux_du_mois(conn, annee: int, mois: int) -> list[dict]:
+    """Les éditions d'un mois, de la plus récente à la plus ancienne."""
+    return [
+        _vers_bordereau(r)
+        for r in conn.execute(
+            "SELECT * FROM bordereaux WHERE mois=? ORDER BY id DESC",
+            (f"{annee}-{mois:02d}",),
+        )
+    ]
+
+
+def liste_bordereaux(conn, limite: int | None = None) -> list[dict]:
+    """Toutes les éditions, la plus récente d'abord."""
+    borne = f" LIMIT {int(limite)}" if limite else ""
+    return [
+        _vers_bordereau(r)
+        for r in conn.execute(f"SELECT * FROM bordereaux ORDER BY id DESC{borne}")
+    ]
+
+
+def derniers_bordereaux_par_mois(conn) -> dict[str, dict]:
+    """La dernière édition de chaque mois, indexée par `AAAA-MM`.
+
+    C'est cette vue qui sert à suivre l'évolution : un mois réédité ne compte
+    qu'une fois, avec ses chiffres les plus récents.
+    """
+    lignes = conn.execute("""
+        SELECT * FROM (
+            SELECT *, ROW_NUMBER() OVER (PARTITION BY mois ORDER BY id DESC) rang
+            FROM bordereaux
+        ) WHERE rang = 1 ORDER BY mois
+    """).fetchall()
+    return {r["mois"]: _vers_bordereau(r) for r in lignes}
 
 
 def bornes(conn) -> tuple[dt.date | None, dt.date | None]:

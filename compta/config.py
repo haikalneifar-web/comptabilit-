@@ -28,6 +28,11 @@ else:
     PROJECT_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_DIR / "data"
 BACKUP_DIR = PROJECT_DIR / "sauvegardes"
+# Les bordereaux mensuels produits par l'app. `archives/` garde les éditions
+# précédentes d'un mois : on ne réécrit jamais un bordereau par-dessus un autre
+# sans en conserver la trace.
+BORDEREAUX_DIR = PROJECT_DIR / "bordereaux"
+ARCHIVES_DIR = BORDEREAUX_DIR / "archives"
 DB_PATH = DATA_DIR / "compta.db"
 
 XLSX_PATH = Path(os.environ.get("COMPTA_XLSX", r"F:\comptabilité\compta jdid .xlsx"))
@@ -35,6 +40,7 @@ SHEET_NAME = "Feuil1"
 
 DATA_DIR.mkdir(exist_ok=True)
 BACKUP_DIR.mkdir(exist_ok=True)
+ARCHIVES_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # --- colonnes de saisie (les seules que l'app écrit) --------------------------

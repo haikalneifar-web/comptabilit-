@@ -566,5 +566,76 @@ print("\n10. Tarifs")
 at = lancer("app_pages/tarifs.py")
 verifier("aucune exception", not at.exception, str(at.exception))
 
+print("\n11. Bordereaux — un mois, son classeur, son historique")
+# les fichiers produits vont dans un dossier de test : la page range d'habitude
+# dans le projet, et un test ne salit pas le dossier de travail
+from compta import bordereau as _bordereau  # noqa: E402
+import compta.config as _config  # noqa: E402
+
+dossier_test = Path(tempfile.mkdtemp()) / "bordereaux"
+_bordereau.BORDEREAUX_DIR = dossier_test
+_config.BORDEREAUX_DIR = dossier_test
+
+# un mois qui porte des chiffres, pour que le bouton ne soit pas désactivé
+conn = store.connect()
+mois_plein = conn.execute(
+    "SELECT substr(date,1,7) m FROM jours GROUP BY m HAVING SUM(recettes) > 0 "
+    "ORDER BY m DESC LIMIT 1"
+).fetchone()["m"]
+conn.close()
+annee_test, mois_test = int(mois_plein[:4]), int(mois_plein[5:7])
+
+at = lancer("app_pages/bordereaux.py",
+            {"mois_travail": (annee_test, mois_test)})
+verifier("aucune exception", not at.exception, str(at.exception))
+verifier("la page annonce les bordereaux",
+         any("Bordereaux" in h.value for h in at.header))
+verifier("le mois affiché est celui demandé",
+         at.session_state["mois_travail"] == (annee_test, mois_test),
+         f"({at.session_state['mois_travail']})")
+verifier("les recettes du mois sont affichées", metrique(at, "Recettes") is not None)
+verifier("le CA à déclarer aussi", metrique(at, "CA à déclarer") is not None)
+verifier("aucun bordereau n'est encore édité",
+         any("pas encore été édité" in c.value for c in at.caption),
+         "(historique non vide au départ)")
+
+bouton = next((b for b in at.button if "Générer" in b.label), None)
+verifier("le bouton de génération est là", bouton is not None)
+verifier("il est actif sur un mois renseigné",
+         bouton is not None and not bouton.disabled)
+
+at = bouton.click().run()
+verifier("générer ne lève rien", not at.exception, str(at.exception))
+verifier("le fichier est annoncé enregistré",
+         any("enregistré" in s.value for s in at.success), str(at.success))
+produit = dossier_test / str(annee_test) / _bordereau.nom_fichier(annee_test, mois_test)
+verifier("le fichier est bien sur le disque",
+         produit.exists() and produit.stat().st_size > 0, f"({produit})")
+verifier("il se télécharge depuis la page",
+         any("Télécharger" in d.label for d in at.download_button))
+
+historique = table(at, "Édité le", "Recettes", "Δ recettes")
+verifier("l'édition figure à l'historique",
+         historique is not None and len(historique) == 1,
+         f"({None if historique is None else len(historique)} ligne(s))")
+verifier("l'historique dit de quel registre elle vient",
+         historique is not None and historique["Registre"].iloc[0] == "corrigé",
+         f"({None if historique is None else historique['Registre'].iloc[0]})")
+
+# rééditer : une ligne de plus, la première intacte
+at = lancer("app_pages/bordereaux.py", {"mois_travail": (annee_test, mois_test)})
+bouton = next((b for b in at.button if "Générer" in b.label), None)
+at = bouton.click().run()
+verifier("rééditer ne lève rien", not at.exception, str(at.exception))
+historique = table(at, "Édité le", "Recettes", "Δ recettes")
+verifier("la réédition s'ajoute à l'historique",
+         historique is not None and len(historique) == 2,
+         f"({None if historique is None else len(historique)} ligne(s))")
+verifier("l'édition précédente est archivée",
+         (dossier_test / "archives").exists()
+         and any((dossier_test / "archives").glob("*.xlsx")))
+verifier("la page signale l'édition précédente",
+         any("déjà été édité" in i.value for i in at.info), str(at.info))
+
 print(f"\n{'=' * 50}\n{ok} réussis, {ko} échecs\n{'=' * 50}")
 sys.exit(1 if ko else 0)

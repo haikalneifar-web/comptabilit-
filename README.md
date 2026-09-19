@@ -81,12 +81,13 @@ encore au registre : le classeur s'arrête au 23/01/2027, au-delà les journées
 créent à l'enregistrement. La page *Saisie du jour* reste là pour les journées
 saisies à l'unité.
 
-## Les six pages
+## Les sept pages
 
 | Page | À quoi elle sert |
 |---|---|
 | **Mois comptable** | L'écran de travail : à gauche les colonnes de saisie, éditables ; à droite les colonnes calculées, qui suivent la frappe. C'est là qu'on saisit, qu'on corrige et qu'on rectifie. |
 | **Saisie du jour** | En appoint : un bouton par acte au fil de la journée, ou les totaux du jour d'un coup. |
+| **Bordereaux** | Édite le bordereau du mois — le mois du registre dans un classeur autonome, montants en formules — le range, en garde l'historique et montre l'évolution. |
 | **Rectifications** | Deux tableaux côte à côte : à gauche le registre réel, non modifiable ; à droite le corrigé, qu'on modifie. L'écart devient une rectification motivée. Suivent le journal des corrections du mois et leur effet sur les totaux. |
 | **Tableau de bord** | Évolution mensuelle, composition des recettes, volume de cataractes, récapitulatif annuel. |
 | **Classeur Excel** | Écrit les journées saisies dans le `.xlsx`, signale si le fichier a changé sans l'app, liste les sauvegardes, permet de réimporter. |
@@ -217,6 +218,40 @@ de la même façon.
 (2 903 journées) ; les lignes pré-remplies à zéro jusqu'au 23/01/2027 sont des
 emplacements de saisie et restent ouvertes (1 227).
 
+## Le bordereau mensuel
+
+Le bordereau, c'est **un mois du registre extrait dans un classeur autonome** :
+colonnes A→AD, en-tête sur trois lignes, journées à partir de la ligne 4 — la
+feuille du classeur, sur un seul mois et dans un fichier neuf. Une deuxième
+feuille, *Récapitulatif*, dit d'où il vient, ce qu'il totalise et à quels tarifs.
+
+Le point qui fait tout : **les montants restent des formules**. Seuls les
+compteurs et les montants saisis sont écrits en valeur — C, E, H, J, L, N, P puis
+R, S, T, V ; D, F, G, I, K, M, O, Q, U, W, X, Y, Z, AA, AB, AC et AD sont les
+formules du classeur, réécrites au numéro de ligne du bordereau, et la dernière
+ligne les additionne. Corriger un compteur dans le bordereau met ses totaux à
+jour tout seul. Les totaux du récapitulatif sont eux-mêmes des renvois vers cette
+ligne de total, jamais des nombres recopiés.
+
+**Chaque journée porte son tarif**, celui que le registre lui connaît : une
+journée de 2019 s'écrit au prix de 2019, visible à l'œil nu dans la formule
+(`=C12*52`). Le récapitulatif signale un tarif qui a changé en cours de mois
+plutôt que d'en choisir un.
+
+Une seule liberté prise sur le modèle : la colonne **Y — « à la charge STAR »**,
+que le classeur annonce en en-tête mais ne remplit plus depuis 2016. Le bordereau
+la remplit (`=K{ligne}`) ; aucun total n'en dépend, ni ici ni dans le classeur.
+
+**Rien ne s'écrase.** Un mois a toujours un bordereau courant, au même chemin —
+`bordereaux/<année>/bordereau-<année>-<mois>.xlsx`, c'est lui qu'on envoie.
+Rééditer le mois pousse l'ancien dans `bordereaux/archives/`, horodaté, comme les
+sauvegardes du classeur, et **ajoute une ligne au journal des éditions** : la
+page montre alors l'écart entre deux éditions du même mois, et la courbe
+d'évolution marque d'un point les mois déjà édités.
+
+Le classeur du cabinet n'est jamais ouvert pour ça : le bordereau se fabrique à
+partir du registre de l'app.
+
 ## Ce que l'app écrit dans le classeur
 
 Uniquement les **colonnes de saisie** :
@@ -263,11 +298,13 @@ app_pages/            une page par écran
 compta/
   config.py           chemins, colonnes du classeur, postes
   model.py            miroir Python des formules Excel
-  store.py            registre SQLite : journées, clôture, rectifications
+  store.py            registre SQLite : journées, clôture, rectifications, bordereaux
   xlsx_io.py          import et écriture du classeur
+  bordereau.py        le mois du registre en classeur autonome, formules comprises
   export.py           un tableau en PDF, Excel ou CSV
 data/compta.db        registre de travail
 sauvegardes/          copies du classeur avant écriture
+bordereaux/           bordereaux mensuels édités, `archives/` pour les éditions passées
 tests/                tests, sur une copie de la base — jamais sur l'originale
 ```
 
@@ -279,7 +316,8 @@ python tests\test_tarifs.py           # changement de prix, jusqu'à l'écriture
 python tests\test_export.py           # PDF, Excel et CSV relus et vérifiés
 python tests\test_synchronisation.py  # le classeur modifié en dehors de l'app
 python tests\test_import_tarifs.py    # actes comptés sans montant, tarifs hérités
-python tests\test_pages.py            # rendu des six pages, sans navigateur
+python tests\test_bordereau.py        # bordereau mensuel : formules, tarifs, archivage
+python tests\test_pages.py            # rendu des sept pages, sans navigateur
 ```
 
 Ils travaillent tous sur des **copies** de la base et du classeur — ou sur un
