@@ -299,9 +299,12 @@ at = lancer("app_pages/totaux.py", {"mois_travail": (2026, 7)})
 verifier("aucune exception", not at.exception, str(at.exception))
 verifier("la page porte son titre",
          any("Totaux du mois" in h.value for h in at.header))
-verifier("deux tableaux : ce que les postes rapportent, ce qu'on en tire",
-         len(at.dataframe) == 2, f"({len(at.dataframe)})")
-calcul = at.dataframe[0].value.join(at.dataframe[1].value)
+# Un seul tableau : ce que le classeur tire du mois. Les montants par poste ne
+# sont qu'en tuiles — leur détail journée par journée reprendrait la grille de
+# saisie de la page précédente, au tarif près.
+verifier("un seul tableau : ce que le classeur en tire",
+         len(at.dataframe) == 1, f"({len(at.dataframe)})")
+calcul = at.dataframe[0].value
 
 # Le garde-fou : la page doit montrer TOUTES les colonnes que le classeur
 # calcule. Onze manquaient — dont « à verser à la banque » (AA), la TVA déduite
@@ -313,18 +316,40 @@ verifier("la liste des colonnes calculées couvre celles du classeur",
          {(attribut, lettre) for lettre, _, attribut, _ in CALCULES}
          == set(CALC_COLS.items()),
          f"(oubliées : {sorted(set(CALC_COLS.values()) - {l for l, _, _, _ in CALCULES})})")
+a_l_ecran = set(calcul.columns) | {m.label for m in at.metric}
 manquantes = [f"{lettre} ({libelle})" for lettre, libelle, _, _ in CALCULES
-              if libelle not in calcul.columns]
-verifier("et les seize sont affichées sur la page",
+              if libelle not in a_l_ecran]
+verifier("et les seize sont à l'écran, en tuile ou en colonne",
          not manquantes, f"(absentes de l'écran : {manquantes})")
 verifier("« à verser à la banque » en fait partie",
-         "À verser banque" in calcul.columns, f"({list(calcul.columns)})")
-verifier("les montants par poste sont sur le premier tableau",
-         all(libelle in at.dataframe[0].value.columns
-             for _, libelle, _, groupe in CALCULES if groupe == "poste"))
-verifier("les totaux sur le second",
-         all(libelle in at.dataframe[1].value.columns
-             for _, libelle, _, groupe in CALCULES if groupe == "total"))
+         "À verser banque" in a_l_ecran, f"({sorted(a_l_ecran)})")
+verifier("les montants par poste ne sont qu'en tuiles",
+         all(libelle not in calcul.columns
+             for _, libelle, _, groupe in CALCULES if groupe == "poste"),
+         f"({[l for _, l, _, g in CALCULES if g == 'poste' and l in calcul.columns]})")
+verifier("le tableau porte ce que le classeur en tire",
+         all(libelle in calcul.columns
+             for _, libelle, _, groupe in CALCULES if groupe == "total"),
+         f"({list(calcul.columns)})")
+
+# L'export, lui, garde les seize colonnes : c'est le document qu'on sort.
+# AppTest n'expose pas le contenu d'un bouton de téléchargement — on vérifie
+# donc la source, le calcul dont l'export est tiré.
+verifier("les trois formats sont proposés",
+         sorted(b.label for b in at.get("download_button"))
+         == ["CSV", "Excel", "PDF"])
+from app_utils import calculs_du_mois as _calculs  # noqa: E402
+from app_utils import mois_affiche as _mois  # noqa: E402
+
+conn = store.connect()
+_tarifs = store.tarifs_courants(conn)
+_, lignes_calculees = _calculs(_mois(conn, 2026, 7, True, _tarifs), _tarifs,
+                               store.frontiere_tarifs(conn))
+conn.close()
+oubliees = [libelle for _, libelle, _, _ in CALCULES
+            if libelle not in lignes_calculees[0]]
+verifier("le calcul d'où sort l'export porte les seize colonnes",
+         not oubliees, f"(absentes : {oubliees})")
 verifier("elle dit que rien ne s'y saisit",
          any("Rien ne se saisit" in c.value for c in at.caption))
 verifier("elle renvoie vers la saisie",
@@ -346,7 +371,8 @@ verifier("recettes calculées = registre corrigé",
 verifier("patients calculés = registre corrigé",
          int(calcul.loc[D, "Patients"]) == jour_corrige.patients)
 verifier("rien d'autre que du calculé n'y figure",
-         set(calcul.columns) == {libelle for _, libelle, _, _ in CALCULES},
+         set(calcul.columns)
+         <= {libelle for _, libelle, _, _ in CALCULES} | {"Δ en attente"},
          f"(en trop : {sorted(set(calcul.columns) - {l for _, l, _, _ in CALCULES})})")
 verifier("l'écart en attente reste caché sans saisie en attente",
          "Δ en attente" not in calcul.columns)
@@ -373,7 +399,7 @@ for lettre, libelle, attribut, _ in CALCULES:
 
 at.segmented_control(key="registre_totaux").select("Réel").run()
 verifier("bascule vers le réel sans exception", not at.exception, str(at.exception))
-calcul_reel = at.dataframe[1].value      # « Recettes » est au second tableau
+calcul_reel = at.dataframe[0].value
 verifier("le réel diffère du corrigé sur la journée rectifiée",
          abs(float(calcul_reel.loc[D, "Recettes"])
              - float(calcul.loc[D, "Recettes"])) > 0.01)
@@ -400,7 +426,7 @@ verifier("aucun motif demandé sans modification",
 at = lancer("app_pages/totaux.py", {"mois_travail": (2027, 6)})
 verifier("les totaux de ce mois s'affichent aussi", not at.exception,
          str(at.exception))
-calcul = at.dataframe[1].value      # « Recettes » est au second tableau
+calcul = at.dataframe[0].value
 verifier("ses recettes sont calculées",
          abs(float(calcul.loc[dt.date(2027, 6, 3), "Recettes"])
              - attendu_juin.recettes) < 0.01)
@@ -433,7 +459,7 @@ verifier("la tuile des recettes chiffre la modification en attente",
 at_totaux = at.switch_page("app_pages/totaux.py").run()
 verifier("la page des totaux reprend la saisie en attente",
          not at_totaux.exception, str(at_totaux.exception))
-calcul = at_totaux.dataframe[1].value
+calcul = at_totaux.dataframe[0].value
 verifier("la colonne calculée suit la modification",
          abs(float(calcul.loc[D, "Δ en attente"]) - attendu_ecart) < 0.01,
          f"({calcul.loc[D, 'Δ en attente']})")
@@ -564,8 +590,8 @@ verifier("les tuiles sont revenues au registre",
          f"({t.delta if t else None})")
 at.switch_page("app_pages/totaux.py").run()
 verifier("et la page des totaux aussi : plus d'écart à montrer",
-         "Δ en attente" not in at.dataframe[1].value.columns,
-         f"({list(at.dataframe[1].value.columns)})")
+         "Δ en attente" not in at.dataframe[0].value.columns,
+         f"({list(at.dataframe[0].value.columns)})")
 verifier("ses tuiles sont revenues au registre",
          all(not m.delta for m in at.metric),
          f"({[(m.label, m.delta) for m in at.metric if m.delta]})")

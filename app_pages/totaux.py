@@ -2,10 +2,14 @@
 
 L'écran de saisie ne porte que la grille : c'est la secrétaire qui le remplit.
 Les **seize colonnes** que le classeur calcule se lisent ici, sur la page d'à
-côté, en deux tableaux — ce que chaque poste rapporte (D, F, G, I, K, M, O, Q,
-W), puis ce que le classeur en tire (U, X, Z, AA, AB, AC, AD). Dix-neuf
-colonnes d'un seul tenant déborderaient de la page ; la liste, elle, est
-complète, et `model.CALCULES` en répond face au classeur.
+côté, en deux groupes : ce que chaque poste rapporte (D, F, G, I, K, M, O, Q, W)
+et ce que le classeur en tire (U, X, Z, AA, AB, AC, AD). Chacun donne ses totaux
+du mois en tuiles ; seul le second donne aussi son détail journée par journée —
+celui du premier reprendrait le tableau de saisie de la page précédente, au
+tarif près.
+
+La liste, elle, reste complète : `model.CALCULES` en répond face au classeur, et
+l'export sort les seize colonnes jour par jour.
 
 Rien ne s'y saisit. Et rien n'y est recalculé d'une autre façon : les journées
 et leurs totaux viennent de `app_utils.calculs_du_mois`, le même code que celui
@@ -94,14 +98,12 @@ def montants(colonnes, largeur):
 
 
 st.markdown("##### Ce que chaque poste rapporte")
-st.caption("Colonnes D, F, G, I, K, M, O, Q et W — le compteur de la journée "
-           "multiplié par son tarif.")
-tuiles_calculees(CALCULES_POSTE, journees, reference, par_ligne=5)
-st.dataframe(
-    tableau[[libelle for _, libelle, _, _ in CALCULES_POSTE]],
-    height=420,
-    column_config={"Date": DATE} | montants(CALCULES_POSTE, 108),
+st.caption(
+    "Colonnes D, F, G, I, K, M, O, Q et W — le compteur de la journée multiplié "
+    "par son tarif. **En totaux du mois seulement** : le détail journée par "
+    "journée serait le tableau de saisie une seconde fois, au tarif près."
 )
+tuiles_calculees(CALCULES_POSTE, journees, reference, par_ligne=5)
 
 st.markdown("##### Ce que le classeur en tire")
 st.caption("Colonnes U, X, Z, AA, AB, AC et AD — les totaux que les formules "
@@ -134,8 +136,9 @@ barre_export(
     sous_titre=f"Cabinet d'ophtalmologie · {registre_dit} · "
                "les seize colonnes calculées du classeur",
 )
-st.caption(":material/download: L'export reprend les seize colonnes d'un seul "
-           "tenant, les deux tableaux réunis.")
+st.caption(":material/download: L'export reprend les **seize** colonnes "
+           "calculées, jour par jour — y compris celles qui ne sont ici qu'en "
+           "tuiles.")
 
 with st.container(horizontal=True, vertical_alignment="center"):
     st.page_link("app_pages/journal.py", label="Retour à la saisie du mois",

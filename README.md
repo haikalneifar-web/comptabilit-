@@ -115,9 +115,9 @@ comprise : elle vit dans l'état de session et suit d'une page à l'autre.
 ### Les seize colonnes calculées
 
 Le classeur calcule seize colonnes, et la page des totaux les montre **toutes**
-— et rien d'autre. Chaque groupe donne d'abord **ses totaux du mois en tuiles**,
-puis son détail journée par journée. Deux groupes, parce que seize colonnes d'un
-seul tenant déborderaient de la page :
+— et rien d'autre. Chaque groupe donne **ses totaux du mois en tuiles** ; seul
+le second donne aussi son détail journée par journée, celui du premier
+reprendrait la grille de saisie de la page précédente, au tarif près :
 
 - **ce que chaque poste rapporte** — D (APCI), F et G (tiers payant reçu et
   reste), I (remboursement), K (assurance), M (payant), O et Q (cataractes),
@@ -130,10 +130,14 @@ La page ne porte rien d'autre : ni colonne de saisie, ni état de la journée. L
 colonne « Δ en attente » n'apparaît que s'il y a une saisie en attente — sans
 elle, ce serait une colonne de zéros sur un écran qui ne montre que du calculé.
 
+**L'export, lui, sort les seize colonnes jour par jour** — y compris celles qui
+ne sont à l'écran qu'en tuiles.
+
 La liste vit à un seul endroit, `model.CALCULES`, et **des tests imposent**
 qu'elle couvre `config.CALC_COLS` exactement, que chacune de ses entrées soit
-réellement à l'écran, et que **chaque tuile porte bien le total du mois de sa
-colonne**, recalculé depuis le registre. Sans ces garde-fous, une colonne
+réellement à l'écran — en tuile ou en colonne —, que **chaque tuile porte bien
+le total du mois de sa colonne** recalculé depuis le registre, et que le calcul
+dont l'export est tiré les porte toutes. Sans ces garde-fous, une colonne
 calculée peut rester hors de l'écran sans que rien ne le signale : c'est arrivé
 à « à verser à la banque » sur les bordereaux, puis à elle et dix autres ici.
 
