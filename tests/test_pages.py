@@ -107,7 +107,8 @@ verifier("aucune exception", not at.exception, str(at.exception))
 verifier("mars 2027 s'affiche entièrement", len(at.dataframe[1].value) == 31,
          f"({len(at.dataframe[1].value)})")
 verifier("les journées absentes du registre sont signalées",
-         any("n'existent pas encore au registre" in c.value for c in at.caption))
+         any("absente(s) du registre" in c.value for c in at.caption),
+         str([c.value for c in at.caption]))
 
 print("\n0 quater. Un outil d'export sous chaque tableau")
 at = lancer(etat={"mois_travail": (2026, 7)})
@@ -198,6 +199,51 @@ verifier("aucune modification en attente au chargement",
 verifier("deux tableaux côte à côte : saisie et calculé", len(at.dataframe) == 2,
          f"({len(at.dataframe)})")
 saisie_df, calcul = at.dataframe[0].value, at.dataframe[1].value
+
+# --- mise en page ------------------------------------------------------------
+# Les en-têtes étaient rognés — « Rembo », « Catarac », « Laser d » — parce que
+# douze colonnes se partageaient la largeur automatiquement. Les largeurs sont
+# désormais posées en pixels, et ce test vérifie qu'elles tiennent dans la part
+# d'écran de leur colonne. Ajouter une colonne sans rééquilibrer le fera échouer.
+import json as _json_mep  # noqa: E402
+
+PART = {0: 1.85, 1: 1.0}          # le partage déclaré dans journal.py
+LARGEUR_PAGE = 1324               # fenêtre de l'app, marges déduites
+
+
+def largeurs(tableau):
+    reglages = _json_mep.loads(tableau.proto.columns or "{}")
+    return {cle: r.get("width") for cle, r in reglages.items()
+            if isinstance(r, dict) and r.get("width")}
+
+
+bandeau = [m.label for m in at.metric]
+verifier("un seul bandeau de six totaux au-dessus des deux tableaux",
+         bandeau == ["Patients", "Chirurgie", "Recettes", "CA déclaré",
+                     "Caisse", "Dû CNAM"], f"({bandeau})")
+
+for rang, tableau in enumerate(at.dataframe):
+    posees = largeurs(tableau)
+    affichees = set(tableau.value.columns) | {"Date"}
+    if rang == 1:                 # le calculé masque Caisse et Dû CNAM
+        affichees = {"Date", "État", "Patients", "Recettes", "CA déclaré",
+                     "Δ en attente"}
+    manquantes = affichees - set(posees)
+    verifier(f"tableau {rang} : chaque colonne affichée a une largeur posée",
+             not manquantes, f"(sans largeur : {sorted(manquantes)})")
+    budget = LARGEUR_PAGE * PART[rang] / sum(PART.values())
+    demande = sum(posees[c] for c in affichees if c in posees)
+    verifier(f"tableau {rang} : ses colonnes tiennent dans sa part d'écran",
+             demande <= budget,
+             f"({demande} px demandés pour {budget:.0f} disponibles)")
+
+verifier("les libellés de la grille tiennent dans leur colonne",
+         all(len(str(r.get("label", ""))) <= 11
+             for r in _json_mep.loads(at.dataframe[0].proto.columns or "{}").values()
+             if isinstance(r, dict) and r.get("label")),
+         str([r.get("label") for r
+              in _json_mep.loads(at.dataframe[0].proto.columns or "{}").values()
+              if isinstance(r, dict) and r.get("label")]))
 verifier("le tableau de gauche porte les colonnes de saisie",
          "pay_n" in saisie_df.columns and "divers" in saisie_df.columns)
 conn = store.connect()

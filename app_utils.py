@@ -70,19 +70,51 @@ def bandeau_registre(journees: list, reference: list | None = None) -> None:
     st.caption(detail)
 
 
-def bandeau_saisie(journees: list) -> None:
-    """Totaux du tableau de saisie : ce qui a été compté, pas ce qu'on en tire."""
-    somme = lambda champ: sum(getattr(j, champ) for j in journees)  # noqa: E731
-    cols = st.columns(4)
-    cols[0].metric("Patients", f"{somme('patients')}")
-    cols[1].metric("Chirurgie", f"{somme('actes_chirurgie')}")
-    cols[2].metric("Laser", montant(somme("laser_dec") + somme("laser_nd")))
-    cols[3].metric("Divers", montant(somme("divers")))
-    depenses = somme("depenses")
-    st.caption(
-        f"{somme('cat_cnam_n')} cataractes CNAM · {somme('cat_pay_n')} payantes"
-        + (f"  ·  {montant(depenses)} de dépenses" if depenses else "")
-    )
+def bandeau_mois(journees: list, reference: list | None = None) -> None:
+    """Les totaux du mois en une seule rangée de tuiles, au-dessus des tableaux.
+
+    Ce qui se compte et ce que les formules en tirent se lisent d'un coup.
+    Auparavant deux bandeaux séparés surmontaient chacun son tableau, à des
+    hauteurs différentes : les deux grilles ne démarraient pas à la même ligne,
+    et le haut de l'écran passait entier en totaux.
+
+    `reference` — le registre avant la saisie en cours — fait apparaître sous
+    chaque tuile ce que la modification en attente changerait.
+    """
+    somme = lambda champ, source: sum(getattr(j, champ) for j in source)  # noqa: E731
+    postes = [
+        ("Patients", "patients", False),
+        ("Chirurgie", "actes_chirurgie", False),
+        ("Recettes", "recettes", True),
+        ("CA déclaré", "ca_declare", True),
+        ("Caisse", "caisse", True),
+        ("Dû CNAM", "charge_cnam", True),
+    ]
+
+    for col, (libelle, champ, argent) in zip(st.columns(len(postes)), postes):
+        total = somme(champ, journees)
+        delta = None
+        if reference is not None:
+            ecart = total - somme(champ, reference)
+            if abs(ecart) > 0.005:
+                delta = (f"{ecart:+,.0f}".replace(",", " ")
+                         + (" TND" if argent else ""))
+        col.metric(libelle, montant(total) if argent else f"{int(total)}",
+                   delta=delta, border=True)
+
+    # ce qui ne mérite pas une tuile, mais qui manquerait à l'appel
+    laser = somme("laser_dec", journees) + somme("laser_nd", journees)
+    divers = somme("divers", journees)
+    depenses = somme("depenses", journees)
+    detail = [f"{int(somme('cat_cnam_n', journees))} cataracte(s) CNAM",
+              f"{int(somme('cat_pay_n', journees))} payante(s)"]
+    if laser:
+        detail.append(f"{montant(laser)} de laser")
+    if divers:
+        detail.append(f"{montant(divers)} de divers")
+    if depenses:
+        detail.append(f"{montant(depenses)} de dépenses")
+    st.caption(" · ".join(detail))
 
 
 def barre_export(df: "pd.DataFrame", nom: str, titre: str, cle: str,

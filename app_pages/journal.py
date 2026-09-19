@@ -14,9 +14,9 @@ import datetime as dt
 import pandas as pd
 import streamlit as st
 
-from app_utils import (bandeau_registre, bandeau_saisie, barre_export,
-                       editeur_persistant, get_conn, memoriser, montant,
-                       oublier, selecteur_mois, totaux_registre)
+from app_utils import (bandeau_mois, barre_export, editeur_persistant,
+                       get_conn, memoriser, oublier, selecteur_mois,
+                       totaux_registre)
 from compta import store, xlsx_io
 from compta.config import MONTANTS_DIRECTS, TOUS_ACTES
 from compta.model import MONTANTS, mois_long
@@ -53,12 +53,16 @@ if premiere is None:
 if st.session_state.mois_travail is None:
     st.session_state.mois_travail = store.mois_a_saisir(conn)
 
-annee, mois = selecteur_mois(premiere, derniere)
-
-vue = st.segmented_control(
-    "Registre", ["Corrigé", "Réel"], default=st.session_state.registre,
-    key="registre_journal", label_visibility="collapsed",
-)
+# le mois et le registre sur une seule ligne : c'est la barre de réglage de
+# l'écran, elle n'a pas à occuper deux rangées
+choix_mois, choix_registre = st.columns([3, 1], vertical_alignment="bottom")
+with choix_mois:
+    annee, mois = selecteur_mois(premiere, derniere)
+with choix_registre:
+    vue = st.segmented_control(
+        "Registre", ["Corrigé", "Réel"], default=st.session_state.registre,
+        key="registre_journal",
+    )
 if vue:
     st.session_state.registre = vue
 corrige = st.session_state.registre == "Corrigé"
@@ -80,10 +84,20 @@ actifs = sum(1 for r in lignes if r["recettes"] > 0)
 rectifiees = [r for r in lignes if r["rectifiee"]]
 absentes = [r for r in lignes if r.get("absente")]
 
-st.caption(
-    f"**{actifs} jour(s) renseigné(s)** sur les {len(lignes)} du mois. "
-    "Les totaux figurent au-dessus de chaque tableau et suivent votre saisie."
-)
+# une seule ligne d'état plutôt que quatre légendes empilées : chacune disait
+# une chose vraie, mais ensemble elles repoussaient les tableaux vers le bas
+etat = [f"**{actifs} jour(s) renseigné(s)** sur les {len(lignes)} du mois"]
+if rectifiees:
+    etat.append(
+        f"{len(rectifiees)} journée(s) rectifiée(s) — valeurs "
+        + ("du registre corrigé" if corrige else "d'origine, avant rectification")
+    )
+if absentes:
+    etat.append(f"{len(absentes)} journée(s) encore absente(s) du registre, "
+                "créée(s) à l'enregistrement")
+if actifs and len(lignes) - actifs > 8:
+    etat.append(f"{len(lignes) - actifs} journées à zéro")
+st.caption(" · ".join(etat))
 
 dernier_rempli = store.dernier_jour_rempli(conn)
 if actifs == 0 and dernier_rempli and fin > dernier_rempli:
@@ -92,28 +106,6 @@ if actifs == 0 and dernier_rempli and fin > dernier_rempli:
         f"Dernière journée renseignée : {dernier_rempli:%d/%m/%Y}.",
         icon=":material/edit_calendar:",
     )
-elif actifs and len(lignes) - actifs > 8:
-    st.caption(
-        f":material/report: {len(lignes) - actifs} journées du mois sont à zéro. "
-        "Si le cabinet était ouvert, la saisie n'a pas été reportée."
-    )
-
-if rectifiees:
-    st.caption(
-        f":material/edit_note: {len(rectifiees)} journée(s) rectifiée(s) ce mois-ci. "
-        + ("Les valeurs affichées sont celles du registre corrigé."
-           if corrige else
-           "Les valeurs affichées sont celles d'origine, avant rectification.")
-    )
-
-if absentes:
-    st.caption(
-        f":material/add_row_below: {len(absentes)} journée(s) de ce mois n'existent "
-        "pas encore au registre — le classeur s'arrête au 23/01/2027. Elles se "
-        "créeront à l'enregistrement."
-    )
-
-st.divider()
 
 # --- tableau du mois ---------------------------------------------------------
 
@@ -133,25 +125,44 @@ base = pd.DataFrame(
     [{"Date": d, **{c: par_date[d][c] for c in champs}} for d in dates]
 ).set_index("Date")
 
-config_saisie = {
-    **{c: st.column_config.NumberColumn(libelles[c], min_value=0, step=1,
-                                        format="%d", width="small")
-       for c in champs if c not in MONTANTS},
-    **{c: st.column_config.NumberColumn(libelles[c], min_value=0.0, step=10.0,
-                                        format="%.0f", width="small")
-       for c in champs if c in MONTANTS},
+# Largeurs en pixels plutôt que « small » : avec onze colonnes dans la grille
+# de gauche, la largeur automatique rognait les en-têtes — « Rembo », « Catarac »,
+# « Laser d ». Les libellés sont raccourcis pour la grille, le nom entier reste
+# dans l'infobulle.
+COURTS = {
+    "pay_n": "Payant", "remb_n": "Remb.", "apci_n": "APCI", "tp_n": "Tiers p.",
+    "star_n": "Assur.", "cat_cnam_n": "Cat. CNAM", "cat_pay_n": "Cat. pay.",
+    "laser_dec": "Laser décl.", "laser_nd": "Laser n.d.", "divers": "Divers",
+    "depenses": "Dépenses",
 }
 
-gauche, droite = st.columns([3, 2], gap="medium")
+config_saisie = {
+    **{c: st.column_config.NumberColumn(COURTS.get(c, libelles[c]), min_value=0,
+                                        step=1, format="%d", width=64,
+                                        help=libelles[c])
+       for c in champs if c not in MONTANTS},
+    **{c: st.column_config.NumberColumn(COURTS.get(c, libelles[c]), min_value=0.0,
+                                        step=10.0, format="%.0f", width=74,
+                                        help=f"{libelles[c]} — en TND")
+       for c in champs if c in MONTANTS},
+    "Date": st.column_config.DateColumn(format="ddd DD/MM", width=86),
+}
+
+HAUTEUR = 620      # de quoi montrer un mois entier sans faire défiler
+
+# 1,85 contre 1 : la grille de saisie demande 836 px pour ses douze colonnes,
+# le tableau calculé 454 pour ses six. Le partage est calculé sur ces largeurs,
+# pas choisi à vue — c'est ce qui évite les en-têtes rognés.
+bandeau = st.container()          # les totaux, une fois la saisie connue
+gauche, droite = st.columns([1.85, 1], gap="medium")
 
 with gauche:
     st.caption("**Ce qui se saisit** — colonnes C, E, H, J, L, N, P, R, S, T, V")
-    totaux_saisie = st.container()   # rempli une fois le tableau connu
     if corrige:
         edite, ecarts = editeur_persistant(base, cle_grille, MONTANTS,
-                                           config_saisie)
+                                           config_saisie, height=HAUTEUR)
     else:
-        st.dataframe(base, column_config=config_saisie, height=560)
+        st.dataframe(base, column_config=config_saisie, height=HAUTEUR)
         edite, ecarts = base, []
     zone_export_saisie = st.container()
 
@@ -182,8 +193,12 @@ for i, d in enumerate(dates):
 periode = mois_long(annee, mois)
 registre_dit = "registre corrigé" if corrige else "registre réel"
 
-with totaux_saisie:
-    bandeau_saisie(journees)
+with bandeau:
+    bandeau_mois(
+        journees,
+        reference=[store.vers_journee(par_date[d], tarifs, frontiere)
+                   for d in dates] if ecarts else None,
+    )
 
 with zone_export_saisie:
     barre_export(
@@ -195,21 +210,29 @@ with zone_export_saisie:
     )
 
 with droite:
-    st.caption("**Ce que les formules en tirent** — colonnes U, X, Z, AB, AC")
-    bandeau_registre(journees,
-                     reference=[store.vers_journee(par_date[d], tarifs, frontiere)
-                                for d in dates] if ecarts else None)
+    st.caption("**Ce que les formules en tirent** — colonnes U, AB, AC")
+    # Caisse et Dû CNAM ont quitté ce tableau : ils sont au bandeau du haut, et
+    # leur place ici obligeait six colonnes à se partager la moitié de l'espace
+    # de gauche. Les noms de colonnes ne bougent pas — seuls leurs libellés se
+    # raccourcissent.
     st.dataframe(
         pd.DataFrame(calculees).set_index("Date"),
-        height=560,
+        height=HAUTEUR,
+        column_order=["État", "Patients", "Recettes", "CA déclaré",
+                      "Δ en attente"],
         column_config={
-            "Patients": st.column_config.NumberColumn(format="%d", width="small"),
-            "Recettes": st.column_config.NumberColumn(format="%.0f", width="small"),
-            "CA déclaré": st.column_config.NumberColumn(format="%.0f", width="small"),
-            "Caisse": st.column_config.NumberColumn(format="%.0f", width="small"),
-            "Dû CNAM": st.column_config.NumberColumn(format="%.0f", width="small"),
+            "Date": st.column_config.DateColumn(format="ddd DD/MM", width=86),
+            "État": st.column_config.TextColumn(width=78),
+            "Patients": st.column_config.NumberColumn("Patients", format="%d",
+                                                      width=66),
+            "Recettes": st.column_config.NumberColumn("Recettes", format="%.0f",
+                                                      width=86),
+            "CA déclaré": st.column_config.NumberColumn("CA décl.", format="%.0f",
+                                                        width=82,
+                                                        help="CA à déclarer — "
+                                                             "colonne AC"),
             "Δ en attente": st.column_config.NumberColumn(
-                format="%+.0f", width="small",
+                "Δ", format="%+.0f", width=56,
                 help="Ce que la modification en cours changerait aux recettes "
                      "de la journée, avant enregistrement."),
         },
