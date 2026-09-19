@@ -151,13 +151,16 @@ verifier("c'est bien l'export des colonnes calculées",
 
 at = lancer("app_pages/rectifications.py", {"mois_travail": (2026, 7)})
 boutons = at.get("download_button")
-verifier("trois tableaux exportables sur la page des rectifications",
-         len(boutons) == 9, f"({len(boutons)})")
-verifier("réel, corrigé et journal sont proposés",
-         {b.key.split("_")[1] for b in boutons} == {"reel", "corrige", "journal"},
+verifier("deux tableaux exportables sur la page des rectifications",
+         len(boutons) == 6, f"({len(boutons)})")
+verifier("le corrigé et le journal sont proposés",
+         {b.key.split("_")[1] for b in boutons} == {"corrige", "journal"},
          f"({[b.key for b in boutons]})")
 verifier("chacun dans les trois formats",
-         sorted(b.label for b in boutons) == sorted(["PDF", "Excel", "CSV"] * 3))
+         sorted(b.label for b in boutons) == sorted(["PDF", "Excel", "CSV"] * 2))
+verifier("le registre réel ne s'exporte plus d'ici : il est sur Mois comptable",
+         not any("reel" in b.key for b in boutons),
+         f"({[b.key for b in boutons]})")
 
 print("\n0 ter. Horizon des années et navigation de mois en mois")
 at = lancer(etat={"mois_travail": (2026, 12)})
@@ -674,42 +677,56 @@ nb_avant = store.nb_rectifications(conn)
 conn.close()
 
 at = lancer("app_pages/rectifications.py", {"mois_travail": (2026, 7)})
-verifier("deux tableaux : réel et corrigé", len(at.dataframe) >= 2)
-reel_df = at.dataframe[0].value
-verifier("le tableau de gauche montre le registre réel",
-         int(reel_df["pay_n"].iloc[position]) == reel_D.pay_n,
-         f"({reel_df['pay_n'].iloc[position]} vs {reel_D.pay_n})")
-verifier("le tableau de droite montre le registre corrigé",
-         int(at.dataframe[1].value["pay_n"].iloc[position]) == corrige_D.pay_n)
-verifier("les deux diffèrent sur la journée déjà rectifiée",
+# Une seule grille désormais : le registre réel se lit sur « Mois comptable »
+# en vue « Réel », il faisait double emploi ici.
+corrige_df = at.dataframe[0].value
+verifier("la grille montre le registre corrigé",
+         int(corrige_df["pay_n"].iloc[position]) == corrige_D.pay_n,
+         f"({corrige_df['pay_n'].iloc[position]} vs {corrige_D.pay_n})")
+verifier("elle diffère du réel sur la journée déjà rectifiée",
          reel_D.pay_n != corrige_D.pay_n)
+verifier("le registre réel n'a plus sa grille ici",
+         not any(int(d.value["pay_n"].iloc[position]) == reel_D.pay_n
+                 for d in at.dataframe if "pay_n" in d.value.columns),
+         "(une grille porte encore les valeurs d'origine)")
 verifier("seules les journées clôturées y figurent",
-         len(reel_df) == len(cloturees), f"({len(reel_df)})")
+         len(corrige_df) == len(cloturees), f"({len(corrige_df)})")
 verifier("aucune correction en attente au chargement",
          any("Aucune." in c.value for c in at.caption))
+# la grille partage la configuration de colonnes de l'écran de saisie
+grille_rectif = next((d for d in at.dataframe if "pay_n" in d.value.columns), None)
+verifier("ses colonnes ont les largeurs posées de la grille de saisie",
+         grille_rectif is not None
+         and set(largeurs(grille_rectif)) >= set(corrige_df.columns) | {"Date"},
+         f"({sorted(largeurs(grille_rectif)) if grille_rectif else None})")
+verifier("et elles tiennent dans la page",
+         grille_rectif is not None
+         and sum(largeurs(grille_rectif).values()) <= LARGEUR_PAGE,
+         f"({sum(largeurs(grille_rectif).values()) if grille_rectif else 0} px)")
 
 conn = store.connect()
 mois_reel = [store.vers_journee(r) for r in store.journal(
     conn, dt.date(2026, 7, 1), dt.date(2026, 7, 31)) if r["cloture"]]
 conn.close()
 recettes_reelles = sum(j.recettes for j in mois_reel)
-verifier("un bandeau de totaux par tableau",
-         sum(1 for m in at.metric if m.label == "Recettes") == 2,
+verifier("un seul bandeau de totaux, celui du corrigé",
+         sum(1 for m in at.metric if m.label == "Recettes") == 1,
          f"({sum(1 for m in at.metric if m.label == 'Recettes')})")
-verifier("les totaux du registre réel sont ceux du registre",
-         at.metric[0].value == f"{recettes_reelles:,.0f}".replace(",", " ") + " TND",
-         f"({at.metric[0].value})")
 conn = store.connect()
 mois_corrige = [store.vers_journee(r) for r in store.journal(
     conn, dt.date(2026, 7, 1), dt.date(2026, 7, 31), corrige=True) if r["cloture"]]
 conn.close()
-ecart_deja_la = sum(j.recettes for j in mois_corrige) - recettes_reelles
+recettes_corrigees = sum(j.recettes for j in mois_corrige)
+ecart_deja_la = recettes_corrigees - recettes_reelles
 recettes = [m for m in at.metric if m.label == "Recettes"]
-verifier("le bandeau du réel n'affiche pas d'écart", not recettes[0].delta)
-verifier("celui du corrigé chiffre les rectifications déjà enregistrées",
-         recettes[1].delta.replace(" ", "").replace("TND", "")
+verifier("il porte les totaux du registre corrigé",
+         recettes[0].value
+         == f"{recettes_corrigees:,.0f}".replace(",", " ") + " TND",
+         f"({recettes[0].value})")
+verifier("et chiffre les rectifications déjà enregistrées, face au réel",
+         recettes[0].delta.replace(" ", "").replace("TND", "")
          == f"{ecart_deja_la:+.0f}",
-         f"({recettes[1].delta} vs {ecart_deja_la:+.0f})")
+         f"({recettes[0].delta} vs {ecart_deja_la:+.0f})")
 
 print("\n7 bis. Rectifications — modifier le tableau de droite")
 at = lancer("app_pages/rectifications.py", {
@@ -731,14 +748,13 @@ verifier("l'écart est mesuré par rapport au réel",
              - (corrige_D.pay_n + 4 - reel_D.pay_n)) < 0.01)
 
 recettes = [m for m in at.metric if m.label == "Recettes"]
-verifier("le bandeau du réel reste sans écart", not recettes[0].delta)
-verifier("le bandeau du corrigé chiffre l'écart en attente",
-         recettes[1].delta and "+" in recettes[1].delta,
-         f"({recettes[1].delta})")
+verifier("le bandeau chiffre l'écart en attente",
+         recettes[0].delta and "+" in recettes[0].delta,
+         f"({recettes[0].delta})")
 verifier("l'écart correspond aux 4 consultations ajoutées",
-         recettes[1].delta.replace(" ", "").replace("TND", "")
+         recettes[0].delta.replace(" ", "").replace("TND", "")
          == f"{4 * corrige_D.tarifs['t_pay'] + (corrige_D.recettes - reel_D.recettes):+.0f}",
-         f"({recettes[1].delta})")
+         f"({recettes[0].delta})")
 
 bouton = [b for b in at.button if "Enregistrer" in b.label][0]
 verifier("enregistrement bloqué sans motif", bouton.disabled)

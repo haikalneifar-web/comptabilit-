@@ -1,8 +1,10 @@
 """Rectifier un mois déjà enregistré, sans jamais toucher au registre réel.
 
-À gauche ce que le registre dit vraiment, à droite ce qu'il devrait dire. On
-modifie la colonne de droite, on explique pourquoi, et l'écart devient une
-rectification datée. La gauche ne bouge jamais.
+Une seule grille, celle qu'on modifie : ce que le registre **devrait** dire. On
+la corrige, on explique pourquoi, et l'écart avec le registre réel devient une
+rectification datée. Le réel, lui, ne bouge jamais — il se lit sur « Mois
+comptable » en vue « Réel », et il reste ici la référence du calcul : l'écart
+affiché sous la grille se mesure sur lui.
 """
 
 from __future__ import annotations
@@ -13,10 +15,10 @@ import datetime as dt
 import pandas as pd
 import streamlit as st
 
-from app_utils import (bandeau_registre, barre_export, demander_rectification,
-                       editeur_persistant, get_conn, memoriser, montant,
-                       oublier, rectification_en_attente, selecteur_mois,
-                       totaux_registre, valeur_champ)
+from app_utils import (bandeau_registre, barre_export, config_grille,
+                       demander_rectification, editeur_persistant, get_conn,
+                       memoriser, montant, oublier, rectification_en_attente,
+                       selecteur_mois, totaux_registre, valeur_champ)
 from compta import store
 from compta.config import LIBELLES_CHAMPS, MONTANTS_DIRECTS, TOUS_ACTES
 from compta.model import MONTANTS, mois_long
@@ -90,39 +92,25 @@ base_corrigee = pd.DataFrame(
     [{"Date": d, **{c: r[c] for c in champs}} for d, r in zip(dates, cloturees)]
 ).set_index("Date")
 
-config = {
-    **{c: st.column_config.NumberColumn(libelles[c], min_value=0, step=1,
-                                        format="%d", width="small")
-       for c in champs if c not in MONTANTS},
-    **{c: st.column_config.NumberColumn(libelles[c], min_value=0.0, step=10.0,
-                                        format="%.0f", width="small")
-       for c in champs if c in MONTANTS},
-}
+config = config_grille(champs, libelles)
 
 journees_reelles = [store.vers_journee(reel[d.isoformat()]) for d in dates]
 
-gauche, droite = st.columns(2, gap="medium")
-
 periode = mois_long(annee, mois)
 
-with gauche:
-    st.caption("**Registre réel** — les valeurs saisies à l'origine, non modifiables")
-    bandeau_registre(journees_reelles)
-    st.dataframe(base_reelle, column_config=config, height=520)
-    barre_export(
-        base_reelle, f"registre_reel_{annee}-{mois:02d}",
-        f"Registre réel — {periode}", cle=f"reel_{annee}_{mois}",
-        libelles=libelles, totaux=totaux_registre(journees_reelles),
-        sous_titre="Cabinet d'ophtalmologie · valeurs d'origine, avant toute "
-                   "rectification",
-    )
-
-with droite:
-    st.caption("**Registre corrigé** — modifiez ici, ligne par ligne")
-    totaux_corriges = st.container()   # rempli une fois le tableau connu
-    edite, ecarts = editeur_persistant(base_corrigee, cle_grille, MONTANTS,
-                                       config, height=520)
-    zone_export_corrige = st.container()
+# Le registre réel n'a plus son tableau ici : c'est celui de **Mois comptable**
+# en vue « Réel », à la ligne près. Il reste la référence du calcul — l'écart
+# affiché plus bas se mesure sur lui — mais l'afficher deux fois ne disait rien
+# de plus et coupait la grille de rectification en deux.
+st.caption(
+    "**Registre corrigé** — modifiez ici, ligne par ligne. Les valeurs "
+    "d'origine se lisent sur **Mois comptable**, bouton « Réel » ; elles ne "
+    "bougent jamais."
+)
+totaux_corriges = st.container()   # rempli une fois le tableau connu
+edite, ecarts = editeur_persistant(base_corrigee, cle_grille, MONTANTS,
+                                   config, height=520)
+zone_export_corrige = st.container()
 
 journees_corrigees = []
 for i, ligne_jour in enumerate(cloturees):

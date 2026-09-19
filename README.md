@@ -90,7 +90,7 @@ test tient cet ordre : `st.navigation` ne l'expose pas, il se relit à la source
 |---|---|
 | **Mois comptable** | L'écran de saisie, ouvert sur le mois à reprendre : une grille pleine largeur, une ligne par journée, et les totaux du mois en tuiles sous le tableau. C'est là qu'on saisit, qu'on corrige et qu'on rectifie. |
 | **Totaux du mois** | Les **seize colonnes** que le classeur calcule : leurs totaux du mois en tuiles, et le détail journée par journée pour ce que le classeur en tire. Rien ne s'y saisit ; la saisie en attente sur l'écran précédent y est comprise. |
-| **Rectifications** | Deux tableaux côte à côte : à gauche le registre réel, non modifiable ; à droite le corrigé, qu'on modifie. L'écart devient une rectification motivée. Suivent le journal des corrections du mois et leur effet sur les totaux. |
+| **Rectifications** | Une grille, celle qu'on modifie : le registre corrigé. L'écart avec le réel — qui se lit sur *Mois comptable*, vue « Réel » — devient une rectification motivée. Suivent le journal des corrections du mois et leur effet sur les totaux. |
 | **Saisie du jour** | En appoint : un bouton par acte au fil de la journée, ou les totaux du jour d'un coup. |
 | **Bordereaux** | Édite le bordereau du mois — le mois du registre dans un classeur autonome, montants en formules — le range, en garde l'historique et montre l'évolution. |
 | **Tableau de bord** | Évolution mensuelle, composition des recettes, volume de cataractes, récapitulatif annuel. |
@@ -220,22 +220,28 @@ et du Tableau de bord montre les deux à tout moment.
 
 Une journée se clôture à l'écriture dans le classeur. Avant, elle se corrige
 librement ; après, elle se rectifie — avec un motif, et sans que la valeur
-d'origine disparaisse. La page *Rectifications* montre les deux registres l'un
-à côté de l'autre : le réel à gauche en lecture seule, le corrigé à droite,
-modifiable. Ce qui les sépare devient une rectification datée.
+d'origine disparaisse. La page *Rectifications* ne montre qu'**une** grille,
+celle qu'on modifie : le registre corrigé. Le réel reste la référence du calcul
+— l'écart affiché sous la grille se mesure sur lui — mais il se **lit** sur
+*Mois comptable*, bouton « Réel » : l'afficher deux fois ne disait rien de plus.
+Ce qui sépare les deux devient une rectification datée.
 
 ### Comment on saisit et corrige un mois
 
-La page **Mois comptable** affiche le mois comme la feuille du classeur, en deux tableaux
-alignés : **ce qui se saisit** (C, E, H, J, L, N, P, R, S, T, V) à gauche,
-éditable ; **ce que les formules en tirent** (U, X, Z, AB, AC) à droite, avec une
-colonne `Δ en attente` qui chiffre l'effet de la modification en cours avant tout
-enregistrement.
+La page **Mois comptable** affiche le mois comme la feuille du classeur : une
+grille pleine largeur, **ce qui se saisit** (C, E, H, J, L, N, P, R, S, T, V),
+éditable. Ce que les formules en tirent est sur **Totaux du mois**, avec une
+colonne `Δ en attente` qui chiffre l'effet de la modification en cours avant
+tout enregistrement.
 
-Chaque tableau porte ses totaux juste au-dessus, calculés sur ce qu'il affiche —
-modifications en attente comprises. Sur la page *Rectifications*, le bandeau du
-registre corrigé chiffre en plus l'écart au registre réel : on voit l'effet
-d'une correction avant de l'enregistrer.
+Les totaux sont en tuiles sous la grille, calculés sur ce qu'elle affiche —
+modifications en attente comprises. Sur la page *Rectifications*, le bandeau
+chiffre en plus l'écart au registre réel : on voit l'effet d'une correction
+avant de l'enregistrer.
+
+Les deux grilles mensuelles — saisie et rectification — partagent la même
+configuration de colonnes (`app_utils.config_grille`) : mêmes libellés courts,
+mêmes largeurs en pixels, mêmes infobulles.
 
 Sous chaque tableau, trois boutons l'emportent en **PDF**, **Excel** ou **CSV** :
 le PDF se transmet, le classeur se retravaille, le CSV se relit partout. Les

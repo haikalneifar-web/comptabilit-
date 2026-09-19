@@ -72,6 +72,38 @@ def bandeau_registre(journees: list, reference: list | None = None) -> None:
     st.caption(detail)
 
 
+# Libellés courts des colonnes de saisie : le nom entier du poste ne tient pas
+# dans une colonne de grille, il reste dans l'infobulle. Partagés par les deux
+# grilles mensuelles — celle de la saisie et celle des rectifications — pour
+# qu'elles se ressemblent.
+COURTS_GRILLE = {
+    "pay_n": "Payant", "remb_n": "Remb.", "apci_n": "APCI",
+    "tp_n": "Tiers payant", "star_n": "Assurance", "cat_cnam_n": "Cat. CNAM",
+    "cat_pay_n": "Cat. payante", "laser_dec": "Laser décl.",
+    "laser_nd": "Laser n.d.", "divers": "Divers", "depenses": "Dépenses",
+}
+
+
+def config_grille(champs: list, libelles: dict) -> dict:
+    """Les colonnes d'une grille mensuelle : largeurs en pixels, noms courts.
+
+    Les largeurs sont posées plutôt que laissées au calcul automatique : à douze
+    colonnes, celui-ci rogne les en-têtes. Un test vérifie que leur somme tient
+    dans la page.
+    """
+    return {
+        **{c: st.column_config.NumberColumn(
+            COURTS_GRILLE.get(c, libelles[c]), min_value=0, step=1,
+            format="%d", width=94, help=libelles[c])
+           for c in champs if c not in MONTANTS},
+        **{c: st.column_config.NumberColumn(
+            COURTS_GRILLE.get(c, libelles[c]), min_value=0.0, step=10.0,
+            format="%.0f", width=106, help=f"{libelles[c]} — en TND")
+           for c in champs if c in MONTANTS},
+        "Date": st.column_config.DateColumn(format="ddd DD/MM", width=100),
+    }
+
+
 def mois_affiche(conn, annee: int, mois: int, corrige: bool,
                  tarifs: dict) -> dict:
     """Le mois entier, du 1er au dernier jour, indexé par date.

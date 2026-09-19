@@ -17,9 +17,9 @@ import pandas as pd
 import streamlit as st
 
 from app_utils import (bandeau_mois, barre_export, brouillon_du_mois,
-                       calculs_du_mois, editeur_persistant, get_conn,
-                       memoriser, mois_affiche, oublier, selecteur_mois,
-                       totaux_registre)
+                       calculs_du_mois, config_grille, editeur_persistant,
+                       get_conn, memoriser, mois_affiche, oublier,
+                       selecteur_mois, totaux_registre)
 from compta import store, xlsx_io
 from compta.config import MONTANTS_DIRECTS, TOUS_ACTES
 from compta.model import MONTANTS, mois_long
@@ -122,28 +122,7 @@ base = pd.DataFrame(
     [{"Date": d, **{c: par_date[d][c] for c in champs}} for d in dates]
 ).set_index("Date")
 
-# Largeurs en pixels plutôt que « small » : à douze colonnes, la largeur
-# automatique rognait les en-têtes — « Rembo », « Catarac », « Laser d ». La
-# grille tient désormais toute la page, d'où des colonnes larges et des libellés
-# lisibles ; le nom entier du poste reste dans l'infobulle.
-COURTS = {
-    "pay_n": "Payant", "remb_n": "Remb.", "apci_n": "APCI",
-    "tp_n": "Tiers payant", "star_n": "Assurance", "cat_cnam_n": "Cat. CNAM",
-    "cat_pay_n": "Cat. payante", "laser_dec": "Laser décl.",
-    "laser_nd": "Laser n.d.", "divers": "Divers", "depenses": "Dépenses",
-}
-
-config_saisie = {
-    **{c: st.column_config.NumberColumn(COURTS.get(c, libelles[c]), min_value=0,
-                                        step=1, format="%d", width=94,
-                                        help=libelles[c])
-       for c in champs if c not in MONTANTS},
-    **{c: st.column_config.NumberColumn(COURTS.get(c, libelles[c]), min_value=0.0,
-                                        step=10.0, format="%.0f", width=106,
-                                        help=f"{libelles[c]} — en TND")
-       for c in champs if c in MONTANTS},
-    "Date": st.column_config.DateColumn(format="ddd DD/MM", width=100),
-}
+config_saisie = config_grille(champs, libelles)
 
 HAUTEUR = 560      # les tuiles de totaux restent visibles sous la grille
 
