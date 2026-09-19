@@ -345,20 +345,31 @@ verifier("recettes calculées = registre corrigé",
          f"({calcul.loc[D, 'Recettes']} vs {jour_corrige.recettes})")
 verifier("patients calculés = registre corrigé",
          int(calcul.loc[D, "Patients"]) == jour_corrige.patients)
-verifier("l'état de la journée et l'écart en attente les accompagnent",
-         {"État", "Δ en attente"} <= set(calcul.columns),
-         f"({list(calcul.columns)})")
-verifier("aucun écart en attente au chargement",
-         all(abs(float(v)) < 0.01 for v in calcul["Δ en attente"]))
-verifier("la journée rectifiée est signalée comme telle",
-         calcul.loc[D, "État"] == "Rectifiée", f"({calcul.loc[D, 'État']})")
-verifier("les emplacements vides sont ouverts",
-         all(calcul.loc[d, "État"] == "Ouverte" for d in ouvertes))
+verifier("rien d'autre que du calculé n'y figure",
+         set(calcul.columns) == {libelle for _, libelle, _, _ in CALCULES},
+         f"(en trop : {sorted(set(calcul.columns) - {l for _, l, _, _ in CALCULES})})")
+verifier("l'écart en attente reste caché sans saisie en attente",
+         "Δ en attente" not in calcul.columns)
 verifier("la journée rectifiée n'est pas un emplacement ouvert", D not in ouvertes)
-verifier("le bandeau de totaux y figure aussi",
-         [m.label for m in at.metric] == ["Patients", "Chirurgie", "Recettes",
-                                          "CA déclaré", "Caisse", "Dû CNAM"],
-         f"({[m.label for m in at.metric]})")
+
+# --- les tuiles portent les totaux du mois des colonnes calculées ------------
+tuiles = {m.label: m for m in at.metric}
+verifier("une tuile par colonne calculée, les seize",
+         list(tuiles) == [libelle for _, libelle, _, _ in CALCULES],
+         f"({list(tuiles)})")
+conn = store.connect()
+journees_juillet = [store.lire_jour_corrige(conn, dt.date(2026, 7, j),
+                                            store.tarifs_courants(conn))
+                    for j in range(1, 32)]
+conn.close()
+for lettre, libelle, attribut, _ in CALCULES:
+    attendu_total = sum(getattr(j, attribut) for j in journees_juillet)
+    chiffres = "".join(c for c in tuiles[libelle].value
+                       if c.isdigit() or c == ",")
+    lu = float(chiffres.replace(",", ".")) if chiffres else 0.0
+    verifier(f"tuile {lettre} ({libelle}) = total du mois",
+             abs(lu - abs(attendu_total)) <= 1.0,
+             f"(tuile {tuiles[libelle].value!r}, registre {attendu_total:.2f})")
 
 at.segmented_control(key="registre_totaux").select("Réel").run()
 verifier("bascule vers le réel sans exception", not at.exception, str(at.exception))
@@ -389,9 +400,7 @@ verifier("aucun motif demandé sans modification",
 at = lancer("app_pages/totaux.py", {"mois_travail": (2027, 6)})
 verifier("les totaux de ce mois s'affichent aussi", not at.exception,
          str(at.exception))
-calcul = at.dataframe[1].value      # État et Recettes sont au second tableau
-verifier("la journée saisie est ouverte",
-         calcul.loc[dt.date(2027, 6, 3), "État"] == "Ouverte")
+calcul = at.dataframe[1].value      # « Recettes » est au second tableau
 verifier("ses recettes sont calculées",
          abs(float(calcul.loc[dt.date(2027, 6, 3), "Recettes"])
              - attendu_juin.recettes) < 0.01)
@@ -554,9 +563,12 @@ verifier("les tuiles sont revenues au registre",
          (t := metrique(at, "Recettes")) is not None and not t.delta,
          f"({t.delta if t else None})")
 at.switch_page("app_pages/totaux.py").run()
-verifier("et la page des totaux aussi",
-         all(abs(float(v)) < 0.01
-             for v in at.dataframe[1].value["Δ en attente"]))
+verifier("et la page des totaux aussi : plus d'écart à montrer",
+         "Δ en attente" not in at.dataframe[1].value.columns,
+         f"({list(at.dataframe[1].value.columns)})")
+verifier("ses tuiles sont revenues au registre",
+         all(not m.delta for m in at.metric),
+         f"({[(m.label, m.delta) for m in at.metric if m.delta]})")
 at.switch_page("app_pages/journal.py").run()
 verifier("l'abandon tient après un changement d'onglet",
          (t := metrique(at, "Recettes")) is not None and not t.delta,

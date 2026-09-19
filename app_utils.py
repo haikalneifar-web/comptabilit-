@@ -136,6 +136,45 @@ def brouillon_du_mois(annee: int, mois: int) -> dict:
     return st.session_state.get("_brouillons", {}).get(f"grille_{annee}_{mois}", {})
 
 
+# la colonne AB compte des patients, la AD porte des centimes : les autres sont
+# des dinars ronds
+_TUILES_ENTIERES = {"patients"}
+_TUILES_CENTIMES = {"tva_deduite"}
+
+
+def tuiles_calculees(colonnes: list, journees: list,
+                     reference: list | None = None, par_ligne: int = 5) -> None:
+    """Un total de mois par colonne calculée, en tuiles.
+
+    `colonnes` est une tranche de `model.CALCULES` — la liste qui répond des
+    seize colonnes du classeur. `reference`, le registre avant la saisie en
+    attente, fait apparaître sous chaque tuile ce qu'elle changerait.
+    """
+    somme = lambda attribut, source: sum(getattr(j, attribut) for j in source)  # noqa: E731
+
+    for depart in range(0, len(colonnes), par_ligne):
+        tranche = colonnes[depart:depart + par_ligne]
+        for col, (lettre, libelle, attribut, _) in zip(st.columns(par_ligne),
+                                                       tranche):
+            total = somme(attribut, journees)
+            if attribut in _TUILES_ENTIERES:
+                valeur = f"{int(total)}"
+            elif attribut in _TUILES_CENTIMES:
+                valeur = f"{tnd(total, 2)} TND"
+            else:
+                valeur = montant(total)
+
+            delta = None
+            if reference is not None:
+                ecart = total - somme(attribut, reference)
+                if abs(ecart) > 0.005:
+                    delta = (f"{ecart:+,.0f}".replace(",", " ")
+                             + ("" if attribut in _TUILES_ENTIERES else " TND"))
+
+            col.metric(libelle, valeur, delta=delta, border=True,
+                       help=f"Colonne {lettre} du classeur")
+
+
 def bandeau_mois(journees: list, reference: list | None = None) -> None:
     """Les totaux du mois en une seule rangée de tuiles, au-dessus des tableaux.
 

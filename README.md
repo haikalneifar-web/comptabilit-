@@ -114,8 +114,10 @@ comprise : elle vit dans l'état de session et suit d'une page à l'autre.
 
 ### Les seize colonnes calculées
 
-Le classeur calcule seize colonnes, et la page des totaux les montre **toutes**,
-en deux tableaux parce que dix-neuf colonnes d'un seul tenant déborderaient :
+Le classeur calcule seize colonnes, et la page des totaux les montre **toutes**
+— et rien d'autre. Chaque groupe donne d'abord **ses totaux du mois en tuiles**,
+puis son détail journée par journée. Deux groupes, parce que seize colonnes d'un
+seul tenant déborderaient de la page :
 
 - **ce que chaque poste rapporte** — D (APCI), F et G (tiers payant reçu et
   reste), I (remboursement), K (assurance), M (payant), O et Q (cataractes),
@@ -124,11 +126,16 @@ en deux tableaux parce que dix-neuf colonnes d'un seul tenant déborderaient :
   AA (à verser à la banque), AB (patients), AC (CA à déclarer), AD (TVA
   déduite).
 
-La liste vit à un seul endroit, `model.CALCULES`, et **un test impose qu'elle
-couvre `config.CALC_COLS` exactement**, puis que chacune de ses entrées soit
-réellement à l'écran. Sans ce garde-fou, une colonne calculée peut rester hors
-de l'écran sans que rien ne le signale : c'est arrivé à « à verser à la banque »
-sur les bordereaux, puis à elle et dix autres sur cette page.
+La page ne porte rien d'autre : ni colonne de saisie, ni état de la journée. La
+colonne « Δ en attente » n'apparaît que s'il y a une saisie en attente — sans
+elle, ce serait une colonne de zéros sur un écran qui ne montre que du calculé.
+
+La liste vit à un seul endroit, `model.CALCULES`, et **des tests imposent**
+qu'elle couvre `config.CALC_COLS` exactement, que chacune de ses entrées soit
+réellement à l'écran, et que **chaque tuile porte bien le total du mois de sa
+colonne**, recalculé depuis le registre. Sans ces garde-fous, une colonne
+calculée peut rester hors de l'écran sans que rien ne le signale : c'est arrivé
+à « à verser à la banque » sur les bordereaux, puis à elle et dix autres ici.
 
 Les **largeurs de colonnes sont posées en pixels**, pas laissées au calcul
 automatique : à douze colonnes, les en-têtes se faisaient rogner (« Rembo »,

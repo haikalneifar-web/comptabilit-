@@ -19,9 +19,9 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from app_utils import (bandeau_mois, barre_export, brouillon_du_mois,
-                       calculs_du_mois, get_conn, mois_affiche,
-                       selecteur_mois, totaux_registre)
+from app_utils import (barre_export, brouillon_du_mois, calculs_du_mois,
+                       get_conn, mois_affiche, selecteur_mois, totaux_registre,
+                       tuiles_calculees)
 from compta import store
 from compta.model import CALCULES_POSTE, CALCULES_TOTAL, mois_long
 
@@ -74,19 +74,21 @@ if brouillon:
 
 reference = (calculs_du_mois(par_date, tarifs, frontiere)[0]
              if brouillon else None)
-bandeau_mois(journees, reference=reference)
 
 tableau = pd.DataFrame(calculees).set_index("Date")
 
 # Dix-neuf colonnes dans un seul tableau déborderaient de la page et se
-# liraient au défilement horizontal. Deux tableaux, donc, dans l'ordre du
+# liraient au défilement horizontal. Deux groupes, donc, dans l'ordre du
 # classeur : ce que chaque poste rapporte, puis ce que le classeur en tire.
+# Chacun donne d'abord ses totaux du mois en tuiles, puis son détail.
 DATE = st.column_config.DateColumn(format="ddd DD/MM", width=100)
 
 
 def montants(colonnes, largeur):
     return {libelle: st.column_config.NumberColumn(
-        libelle, format="%.0f" if attribut != "tva_deduite" else "%.2f",
+        libelle,
+        format="%d" if attribut == "patients"
+        else "%.2f" if attribut == "tva_deduite" else "%.0f",
         width=largeur, help=f"Colonne {lettre} du classeur")
         for lettre, libelle, attribut, _ in colonnes}
 
@@ -94,26 +96,29 @@ def montants(colonnes, largeur):
 st.markdown("##### Ce que chaque poste rapporte")
 st.caption("Colonnes D, F, G, I, K, M, O, Q et W — le compteur de la journée "
            "multiplié par son tarif.")
+tuiles_calculees(CALCULES_POSTE, journees, reference, par_ligne=5)
 st.dataframe(
     tableau[[libelle for _, libelle, _, _ in CALCULES_POSTE]],
-    height=440,
+    height=420,
     column_config={"Date": DATE} | montants(CALCULES_POSTE, 108),
 )
 
 st.markdown("##### Ce que le classeur en tire")
 st.caption("Colonnes U, X, Z, AA, AB, AC et AD — les totaux que les formules "
            "construisent à partir des précédentes.")
+tuiles_calculees(CALCULES_TOTAL, journees, reference, par_ligne=4)
+
+# « Δ en attente » n'a de sens qu'avec une saisie en attente : sans elle, c'est
+# une colonne de zéros sur un écran qui ne montre que du calculé.
+colonnes_tirees = [libelle for _, libelle, _, _ in CALCULES_TOTAL]
+if brouillon:
+    colonnes_tirees.append("Δ en attente")
 st.dataframe(
-    tableau[["État"] + [libelle for _, libelle, _, _ in CALCULES_TOTAL]
-            + ["Δ en attente"]],
-    height=440,
+    tableau[colonnes_tirees],
+    height=420,
     column_config={
         "Date": DATE,
-        "État": st.column_config.TextColumn(width=90),
-        **montants(CALCULES_TOTAL, 108),
-        "Patients": st.column_config.NumberColumn(
-            "Patients", format="%d", width=88,
-            help="Colonne AB du classeur"),
+        **montants(CALCULES_TOTAL, 120),
         "Δ en attente": st.column_config.NumberColumn(
             "Δ en attente", format="%+.0f", width=118,
             help="Ce que la saisie en attente changerait aux recettes de la "
