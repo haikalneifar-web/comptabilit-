@@ -145,8 +145,7 @@ with zone_export_corrige:
         edite, f"registre_corrige_{annee}-{mois:02d}",
         f"Registre corrigé — {periode}", cle=f"corrige_{annee}_{mois}",
         libelles=libelles, totaux=totaux_registre(journees_corrigees),
-        sous_titre="Cabinet d'ophtalmologie · valeurs d'origine plus les "
-                   "rectifications motivées",
+        sous_titre="Cabinet d'ophtalmologie · registre corrigé",
     )
 
 chirurgie = sum(j.actes_chirurgie for j in journees_corrigees)

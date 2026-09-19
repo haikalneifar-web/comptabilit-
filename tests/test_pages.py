@@ -125,6 +125,40 @@ verifier("saisie, totaux, rectifications ouvrent la barre",
 verifier("les huit pages sont déclarées une fois chacune",
          len(onglets) == len(set(onglets)) == 8, f"({onglets})")
 
+# Ce que portent les documents qui sortent de l'app se relit à la source : le
+# sous-titre d'un export n'est pas observable depuis AppTest, qui n'expose pas
+# le contenu d'un bouton de téléchargement. On ne regarde que les `sous_titre`,
+# pas les légendes à l'écran, qui disent autre chose et n'accompagnent aucun
+# document transmis.
+import ast as _ast_exp  # noqa: E402
+
+
+def _sous_titres_exports():
+    trouves = []
+    for chemin in sorted((PROJET / "app_pages").glob("*.py")):
+        for noeud in _ast_exp.walk(_ast_exp.parse(chemin.read_text(encoding="utf-8"))):
+            if not isinstance(noeud, _ast_exp.Call):
+                continue
+            for mot_cle in noeud.keywords:
+                if mot_cle.arg != "sous_titre":
+                    continue
+                try:
+                    trouves.append(_ast_exp.literal_eval(mot_cle.value))
+                except (ValueError, SyntaxError):
+                    # f-string : on ne garde que ses morceaux littéraux
+                    trouves.append("".join(
+                        part.value
+                        for part in getattr(mot_cle.value, "values", [])
+                        if isinstance(part, _ast_exp.Constant)))
+    return trouves
+
+
+exports = _sous_titres_exports()
+verifier("chaque export porte un sous-titre", len(exports) >= 3, f"({exports})")
+fautifs = [s for s in exports if "valeurs d'origine plus les" in s]
+verifier("aucun ne porte « valeurs d'origine plus les rectifications motivées »",
+         not fautifs, f"({fautifs})")
+
 print("\n0 bis. Un mois au-delà de la dernière ligne du classeur")
 at = lancer(etat={"mois_travail": (2027, 3)})
 verifier("aucune exception", not at.exception, str(at.exception))
