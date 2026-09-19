@@ -207,7 +207,8 @@ saisie_df, calcul = at.dataframe[0].value, at.dataframe[1].value
 # d'écran de leur colonne. Ajouter une colonne sans rééquilibrer le fera échouer.
 import json as _json_mep  # noqa: E402
 
-PART = {0: 1.85, 1: 1.0}          # le partage déclaré dans journal.py
+# La grille tient toute la page ; le tableau replié perd la marge de son volet.
+PART = {0: 1.0, 1: 0.94}
 LARGEUR_PAGE = 1324               # fenêtre de l'app, marges déduites
 
 
@@ -218,32 +219,67 @@ def largeurs(tableau):
 
 
 bandeau = [m.label for m in at.metric]
-verifier("un seul bandeau de six totaux au-dessus des deux tableaux",
+verifier("un bandeau de six totaux, sous le tableau de saisie",
          bandeau == ["Patients", "Chirurgie", "Recettes", "CA déclaré",
                      "Caisse", "Dû CNAM"], f"({bandeau})")
+
+# L'écran de saisie ne porte qu'une chose : la grille du mois. Les tuiles de
+# totaux viennent SOUS elle, et les colonnes calculées sont dans un volet replié.
+# L'ordre d'affichage se lit dans l'arbre de rendu, seul endroit où il existe —
+# `at.dataframe` et `at.metric` les rendent à plat, sans dire lequel vient avant.
+
+
+def parcours(bloc, volet=None):
+    """L'arbre de rendu à plat : (type, libellé, volet qui le contient)."""
+    trouves = []
+    for enfant in getattr(bloc, "children", {}).values():
+        genre = getattr(enfant, "type", enfant.__class__.__name__)
+        try:
+            etiquette = enfant.label
+        except Exception:                      # noqa: BLE001 — sans libellé
+            etiquette = None
+        trouves.append((genre, etiquette, volet))
+        # un volet dépliable se présente comme un « status » dans l'arbre
+        trouves += parcours(enfant, etiquette if genre == "status" else volet)
+    return trouves
+
+
+arbre = parcours(at.main)
+rang = lambda test: next((i for i, n in enumerate(arbre) if test(n)), None)  # noqa: E731
+
+i_grille = rang(lambda n: n[0] == "dataframe" and n[2] is None)
+i_tuiles = rang(lambda n: n[0] == "metric")
+i_calcul = rang(lambda n: n[0] == "dataframe" and n[2] is not None)
+
+verifier("la grille de saisie n'est dans aucun volet", i_grille is not None)
+verifier("les tuiles de totaux viennent sous le tableau",
+         i_grille is not None and i_tuiles is not None and i_grille < i_tuiles,
+         f"(grille en {i_grille}, tuiles en {i_tuiles})")
+verifier("les colonnes calculées sont dans un volet, pas à côté de la saisie",
+         i_calcul is not None
+         and "formules en tirent" in str(arbre[i_calcul][2]),
+         f"({arbre[i_calcul][2] if i_calcul is not None else 'absent'})")
+verifier("et le volet vient après les tuiles",
+         i_calcul is not None and i_tuiles is not None and i_tuiles < i_calcul,
+         f"(tuiles en {i_tuiles}, volet en {i_calcul})")
 
 for rang, tableau in enumerate(at.dataframe):
     posees = largeurs(tableau)
     affichees = set(tableau.value.columns) | {"Date"}
-    if rang == 1:                 # le calculé masque Caisse et Dû CNAM
-        affichees = {"Date", "État", "Patients", "Recettes", "CA déclaré",
-                     "Δ en attente"}
     manquantes = affichees - set(posees)
     verifier(f"tableau {rang} : chaque colonne affichée a une largeur posée",
              not manquantes, f"(sans largeur : {sorted(manquantes)})")
-    budget = LARGEUR_PAGE * PART[rang] / sum(PART.values())
+    budget = LARGEUR_PAGE * PART[rang]
     demande = sum(posees[c] for c in affichees if c in posees)
-    verifier(f"tableau {rang} : ses colonnes tiennent dans sa part d'écran",
+    verifier(f"tableau {rang} : ses colonnes tiennent dans la largeur de page",
              demande <= budget,
              f"({demande} px demandés pour {budget:.0f} disponibles)")
 
-verifier("les libellés de la grille tiennent dans leur colonne",
-         all(len(str(r.get("label", ""))) <= 11
-             for r in _json_mep.loads(at.dataframe[0].proto.columns or "{}").values()
-             if isinstance(r, dict) and r.get("label")),
-         str([r.get("label") for r
+etiquettes = [r.get("label") for r
               in _json_mep.loads(at.dataframe[0].proto.columns or "{}").values()
-              if isinstance(r, dict) and r.get("label")]))
+              if isinstance(r, dict) and r.get("label")]
+verifier("les libellés de la grille tiennent dans leur colonne",
+         all(len(str(e)) <= 12 for e in etiquettes), str(etiquettes))
 verifier("le tableau de gauche porte les colonnes de saisie",
          "pay_n" in saisie_df.columns and "divers" in saisie_df.columns)
 conn = store.connect()

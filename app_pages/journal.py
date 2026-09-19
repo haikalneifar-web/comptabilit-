@@ -125,48 +125,46 @@ base = pd.DataFrame(
     [{"Date": d, **{c: par_date[d][c] for c in champs}} for d in dates]
 ).set_index("Date")
 
-# Largeurs en pixels plutôt que « small » : avec onze colonnes dans la grille
-# de gauche, la largeur automatique rognait les en-têtes — « Rembo », « Catarac »,
-# « Laser d ». Les libellés sont raccourcis pour la grille, le nom entier reste
-# dans l'infobulle.
+# Largeurs en pixels plutôt que « small » : à douze colonnes, la largeur
+# automatique rognait les en-têtes — « Rembo », « Catarac », « Laser d ». La
+# grille tient désormais toute la page, d'où des colonnes larges et des libellés
+# lisibles ; le nom entier du poste reste dans l'infobulle.
 COURTS = {
-    "pay_n": "Payant", "remb_n": "Remb.", "apci_n": "APCI", "tp_n": "Tiers p.",
-    "star_n": "Assur.", "cat_cnam_n": "Cat. CNAM", "cat_pay_n": "Cat. pay.",
-    "laser_dec": "Laser décl.", "laser_nd": "Laser n.d.", "divers": "Divers",
-    "depenses": "Dépenses",
+    "pay_n": "Payant", "remb_n": "Remb.", "apci_n": "APCI",
+    "tp_n": "Tiers payant", "star_n": "Assurance", "cat_cnam_n": "Cat. CNAM",
+    "cat_pay_n": "Cat. payante", "laser_dec": "Laser décl.",
+    "laser_nd": "Laser n.d.", "divers": "Divers", "depenses": "Dépenses",
 }
 
 config_saisie = {
     **{c: st.column_config.NumberColumn(COURTS.get(c, libelles[c]), min_value=0,
-                                        step=1, format="%d", width=64,
+                                        step=1, format="%d", width=94,
                                         help=libelles[c])
        for c in champs if c not in MONTANTS},
     **{c: st.column_config.NumberColumn(COURTS.get(c, libelles[c]), min_value=0.0,
-                                        step=10.0, format="%.0f", width=74,
+                                        step=10.0, format="%.0f", width=106,
                                         help=f"{libelles[c]} — en TND")
        for c in champs if c in MONTANTS},
-    "Date": st.column_config.DateColumn(format="ddd DD/MM", width=86),
+    "Date": st.column_config.DateColumn(format="ddd DD/MM", width=100),
 }
 
-HAUTEUR = 620      # de quoi montrer un mois entier sans faire défiler
+HAUTEUR = 560      # les tuiles de totaux restent visibles sous la grille
 
-# 1,85 contre 1 : la grille de saisie demande 836 px pour ses douze colonnes,
-# le tableau calculé 454 pour ses six. Le partage est calculé sur ces largeurs,
-# pas choisi à vue — c'est ce qui évite les en-têtes rognés.
-bandeau = st.container()          # les totaux, une fois la saisie connue
-gauche, droite = st.columns([1.85, 1], gap="medium")
+# La page de saisie ne porte qu'une chose : la grille du mois, en pleine
+# largeur. Les colonnes calculées n'y sont plus à côté — c'est la secrétaire qui
+# remplit cet écran, et elle n'a pas à lire ce que les formules en tirent. Les
+# totaux du mois se lisent sous le tableau, et le détail par journée reste à un
+# clic, replié.
+st.caption("**Ce qui se saisit** — colonnes C, E, H, J, L, N, P, R, S, T, V")
+if corrige:
+    edite, ecarts = editeur_persistant(base, cle_grille, MONTANTS,
+                                       config_saisie, height=HAUTEUR)
+else:
+    st.dataframe(base, column_config=config_saisie, height=HAUTEUR)
+    edite, ecarts = base, []
+zone_export_saisie = st.container()
 
-with gauche:
-    st.caption("**Ce qui se saisit** — colonnes C, E, H, J, L, N, P, R, S, T, V")
-    if corrige:
-        edite, ecarts = editeur_persistant(base, cle_grille, MONTANTS,
-                                           config_saisie, height=HAUTEUR)
-    else:
-        st.dataframe(base, column_config=config_saisie, height=HAUTEUR)
-        edite, ecarts = base, []
-    zone_export_saisie = st.container()
-
-# --- colonnes calculées, à partir de ce qui est affiché à gauche -------------
+# --- ce que les formules en tirent, calculé sur ce qui est affiché -----------
 
 # accès par position : l'index du tableau peut être converti par pandas, l'ordre
 # des lignes, lui, est celui de `dates`
@@ -193,13 +191,6 @@ for i, d in enumerate(dates):
 periode = mois_long(annee, mois)
 registre_dit = "registre corrigé" if corrige else "registre réel"
 
-with bandeau:
-    bandeau_mois(
-        journees,
-        reference=[store.vers_journee(par_date[d], tarifs, frontiere)
-                   for d in dates] if ecarts else None,
-    )
-
 with zone_export_saisie:
     barre_export(
         edite, f"saisie_{annee}-{mois:02d}", f"Saisie de {periode}",
@@ -209,30 +200,35 @@ with zone_export_saisie:
                    "colonnes de saisie du classeur",
     )
 
-with droite:
-    st.caption("**Ce que les formules en tirent** — colonnes U, AB, AC")
-    # Caisse et Dû CNAM ont quitté ce tableau : ils sont au bandeau du haut, et
-    # leur place ici obligeait six colonnes à se partager la moitié de l'espace
-    # de gauche. Les noms de colonnes ne bougent pas — seuls leurs libellés se
-    # raccourcissent.
+# --- les totaux du mois, sous le tableau -------------------------------------
+
+bandeau_mois(
+    journees,
+    reference=[store.vers_journee(par_date[d], tarifs, frontiere)
+               for d in dates] if ecarts else None,
+)
+
+# Le détail par journée ne s'impose plus à l'écran de saisie ; il reste d'un
+# clic, avec son export, pour qui veut vérifier une journée ou sortir les
+# totaux du mois.
+with st.expander("Ce que les formules en tirent, jour par jour — colonnes U, X, "
+                 "Z, AB, AC", icon=":material/functions:"):
     st.dataframe(
         pd.DataFrame(calculees).set_index("Date"),
-        height=HAUTEUR,
-        column_order=["État", "Patients", "Recettes", "CA déclaré",
-                      "Δ en attente"],
+        height=420,
         column_config={
-            "Date": st.column_config.DateColumn(format="ddd DD/MM", width=86),
-            "État": st.column_config.TextColumn(width=78),
-            "Patients": st.column_config.NumberColumn("Patients", format="%d",
-                                                      width=66),
-            "Recettes": st.column_config.NumberColumn("Recettes", format="%.0f",
-                                                      width=86),
-            "CA déclaré": st.column_config.NumberColumn("CA décl.", format="%.0f",
-                                                        width=82,
-                                                        help="CA à déclarer — "
-                                                             "colonne AC"),
+            "Date": st.column_config.DateColumn(format="ddd DD/MM", width=110),
+            "État": st.column_config.TextColumn(width=100),
+            "Patients": st.column_config.NumberColumn(format="%d", width=100),
+            "Recettes": st.column_config.NumberColumn(format="%.0f", width=110),
+            "CA déclaré": st.column_config.NumberColumn(format="%.0f", width=110,
+                                                        help="Colonne AC"),
+            "Caisse": st.column_config.NumberColumn(format="%.0f", width=110,
+                                                    help="Colonne X"),
+            "Dû CNAM": st.column_config.NumberColumn(format="%.0f", width=110,
+                                                     help="Colonne Z"),
             "Δ en attente": st.column_config.NumberColumn(
-                "Δ", format="%+.0f", width=56,
+                "Δ en attente", format="%+.0f", width=120,
                 help="Ce que la modification en cours changerait aux recettes "
                      "de la journée, avant enregistrement."),
         },
@@ -294,7 +290,7 @@ if modifs:
 
 if not modifs:
     st.caption(
-        "Aucune. Modifiez une cellule du tableau : les colonnes calculées "
+        "Aucune. Modifiez une cellule du tableau : les totaux sous la grille "
         "suivent, et le détail de ce qui change s'affiche ici."
     )
     lien_classeur()

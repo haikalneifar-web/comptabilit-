@@ -85,7 +85,7 @@ saisies à l'unité.
 
 | Page | À quoi elle sert |
 |---|---|
-| **Mois comptable** | L'écran de travail, ouvert sur le mois à saisir : un bandeau de six totaux, puis à gauche les colonnes de saisie, éditables, à droite les colonnes calculées, qui suivent la frappe. C'est là qu'on saisit, qu'on corrige et qu'on rectifie. |
+| **Mois comptable** | L'écran de saisie, ouvert sur le mois à reprendre : une grille pleine largeur, une ligne par journée, et les totaux du mois en tuiles sous le tableau. C'est là qu'on saisit, qu'on corrige et qu'on rectifie. |
 | **Saisie du jour** | En appoint : un bouton par acte au fil de la journée, ou les totaux du jour d'un coup. |
 | **Bordereaux** | Édite le bordereau du mois — le mois du registre dans un classeur autonome, montants en formules — le range, en garde l'historique et montre l'évolution. |
 | **Rectifications** | Deux tableaux côte à côte : à gauche le registre réel, non modifiable ; à droite le corrigé, qu'on modifie. L'écart devient une rectification motivée. Suivent le journal des corrections du mois et leur effet sur les totaux. |
@@ -95,21 +95,28 @@ saisies à l'unité.
 
 ### La mise en page de l'écran de saisie
 
-Un **seul bandeau de six tuiles** — patients, chirurgie, recettes, CA déclaré,
-caisse, dû CNAM — surmonte les deux tableaux, qui démarrent donc à la même
-ligne. Sous les tuiles, une ligne de détail (cataractes, laser, divers,
-dépenses) et une ligne d'état (journées renseignées, rectifiées, à créer).
+**C'est un écran de saisie, et rien d'autre** : la secrétaire y remplit le mois,
+elle n'a pas à lire ce que les formules en tirent. La page porte donc une seule
+grille, en pleine largeur — les onze colonnes de saisie du classeur, une ligne
+par journée.
+
+**Sous le tableau**, un bandeau de six tuiles donne les totaux du mois :
+patients, chirurgie, recettes, CA déclaré, caisse, dû CNAM ; puis une ligne de
+détail (cataractes, laser, divers, dépenses). Quand une modification est en
+attente, chaque tuile affiche en plus ce qu'elle changerait.
+
+Le **détail par journée** — colonnes U, X, Z, AB, AC et l'écart en attente —
+reste à un clic, dans un volet replié sous les tuiles, avec son export.
 
 Les **largeurs de colonnes sont posées en pixels**, pas laissées au calcul
-automatique : à douze colonnes dans la grille de gauche, les en-têtes se
-faisaient rogner (« Rembo », « Catarac », « Laser d »). Les libellés y sont
-raccourcis, le nom entier reste dans l'infobulle, et le partage 1,85 contre 1
-entre les deux tableaux est calculé sur la somme de ces largeurs. `Caisse` et
-`Dû CNAM` ne figurent plus dans le tableau calculé — ils sont au bandeau — mais
-restent dans l'export.
+automatique : à douze colonnes, les en-têtes se faisaient rogner (« Rembo »,
+« Catarac », « Laser d »). Le nom entier du poste reste dans l'infobulle.
 
-Ce budget de largeur est **tenu par un test** : ajouter une colonne sans
-rééquilibrer fait échouer la suite au lieu de rogner un en-tête en silence.
+Trois choses sont **tenues par des tests** : chaque colonne affichée a une
+largeur posée, la somme de ces largeurs tient dans la page, et l'ordre de
+l'écran — grille, puis tuiles, puis volet replié — est vérifié sur l'arbre de
+rendu. Ajouter une colonne sans rééquilibrer, ou remonter les tuiles au-dessus
+du tableau, fait échouer la suite.
 
 ## Quand un tarif change
 
