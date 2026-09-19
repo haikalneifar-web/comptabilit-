@@ -299,9 +299,32 @@ at = lancer("app_pages/totaux.py", {"mois_travail": (2026, 7)})
 verifier("aucune exception", not at.exception, str(at.exception))
 verifier("la page porte son titre",
          any("Totaux du mois" in h.value for h in at.header))
-verifier("un seul tableau : les colonnes calculées", len(at.dataframe) == 1,
-         f"({len(at.dataframe)})")
-calcul = at.dataframe[0].value
+verifier("deux tableaux : ce que les postes rapportent, ce qu'on en tire",
+         len(at.dataframe) == 2, f"({len(at.dataframe)})")
+calcul = at.dataframe[0].value.join(at.dataframe[1].value)
+
+# Le garde-fou : la page doit montrer TOUTES les colonnes que le classeur
+# calcule. Onze manquaient — dont « à verser à la banque » (AA), la TVA déduite
+# (AD) et les neuf montants par poste — et rien ne le signalait.
+from compta.config import CALC_COLS  # noqa: E402
+from compta.model import CALCULES  # noqa: E402
+
+verifier("la liste des colonnes calculées couvre celles du classeur",
+         {(attribut, lettre) for lettre, _, attribut, _ in CALCULES}
+         == set(CALC_COLS.items()),
+         f"(oubliées : {sorted(set(CALC_COLS.values()) - {l for l, _, _, _ in CALCULES})})")
+manquantes = [f"{lettre} ({libelle})" for lettre, libelle, _, _ in CALCULES
+              if libelle not in calcul.columns]
+verifier("et les seize sont affichées sur la page",
+         not manquantes, f"(absentes de l'écran : {manquantes})")
+verifier("« à verser à la banque » en fait partie",
+         "À verser banque" in calcul.columns, f"({list(calcul.columns)})")
+verifier("les montants par poste sont sur le premier tableau",
+         all(libelle in at.dataframe[0].value.columns
+             for _, libelle, _, groupe in CALCULES if groupe == "poste"))
+verifier("les totaux sur le second",
+         all(libelle in at.dataframe[1].value.columns
+             for _, libelle, _, groupe in CALCULES if groupe == "total"))
 verifier("elle dit que rien ne s'y saisit",
          any("Rien ne se saisit" in c.value for c in at.caption))
 verifier("elle renvoie vers la saisie",
@@ -322,9 +345,9 @@ verifier("recettes calculées = registre corrigé",
          f"({calcul.loc[D, 'Recettes']} vs {jour_corrige.recettes})")
 verifier("patients calculés = registre corrigé",
          int(calcul.loc[D, "Patients"]) == jour_corrige.patients)
-verifier("les six colonnes calculées sont là",
-         {"État", "Patients", "Recettes", "CA déclaré", "Caisse", "Dû CNAM",
-          "Δ en attente"} == set(calcul.columns), f"({list(calcul.columns)})")
+verifier("l'état de la journée et l'écart en attente les accompagnent",
+         {"État", "Δ en attente"} <= set(calcul.columns),
+         f"({list(calcul.columns)})")
 verifier("aucun écart en attente au chargement",
          all(abs(float(v)) < 0.01 for v in calcul["Δ en attente"]))
 verifier("la journée rectifiée est signalée comme telle",
@@ -339,7 +362,7 @@ verifier("le bandeau de totaux y figure aussi",
 
 at.segmented_control(key="registre_totaux").select("Réel").run()
 verifier("bascule vers le réel sans exception", not at.exception, str(at.exception))
-calcul_reel = at.dataframe[0].value
+calcul_reel = at.dataframe[1].value      # « Recettes » est au second tableau
 verifier("le réel diffère du corrigé sur la journée rectifiée",
          abs(float(calcul_reel.loc[D, "Recettes"])
              - float(calcul.loc[D, "Recettes"])) > 0.01)
@@ -366,7 +389,7 @@ verifier("aucun motif demandé sans modification",
 at = lancer("app_pages/totaux.py", {"mois_travail": (2027, 6)})
 verifier("les totaux de ce mois s'affichent aussi", not at.exception,
          str(at.exception))
-calcul = at.dataframe[0].value
+calcul = at.dataframe[1].value      # État et Recettes sont au second tableau
 verifier("la journée saisie est ouverte",
          calcul.loc[dt.date(2027, 6, 3), "État"] == "Ouverte")
 verifier("ses recettes sont calculées",
@@ -401,7 +424,7 @@ verifier("la tuile des recettes chiffre la modification en attente",
 at_totaux = at.switch_page("app_pages/totaux.py").run()
 verifier("la page des totaux reprend la saisie en attente",
          not at_totaux.exception, str(at_totaux.exception))
-calcul = at_totaux.dataframe[0].value
+calcul = at_totaux.dataframe[1].value
 verifier("la colonne calculée suit la modification",
          abs(float(calcul.loc[D, "Δ en attente"]) - attendu_ecart) < 0.01,
          f"({calcul.loc[D, 'Δ en attente']})")
@@ -533,7 +556,7 @@ verifier("les tuiles sont revenues au registre",
 at.switch_page("app_pages/totaux.py").run()
 verifier("et la page des totaux aussi",
          all(abs(float(v)) < 0.01
-             for v in at.dataframe[0].value["Δ en attente"]))
+             for v in at.dataframe[1].value["Δ en attente"]))
 at.switch_page("app_pages/journal.py").run()
 verifier("l'abandon tient après un changement d'onglet",
          (t := metrique(at, "Recettes")) is not None and not t.delta,

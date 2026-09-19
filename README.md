@@ -86,7 +86,7 @@ saisies à l'unité.
 | Page | À quoi elle sert |
 |---|---|
 | **Mois comptable** | L'écran de saisie, ouvert sur le mois à reprendre : une grille pleine largeur, une ligne par journée, et les totaux du mois en tuiles sous le tableau. C'est là qu'on saisit, qu'on corrige et qu'on rectifie. |
-| **Totaux du mois** | Ce que les formules tirent du mois, journée par journée — colonnes U, X, Z, AB, AC. Rien ne s'y saisit ; la saisie en attente sur l'écran précédent y est comprise. |
+| **Totaux du mois** | Les **seize colonnes** que le classeur calcule, journée par journée, en deux tableaux : ce que chaque poste rapporte, puis ce que le classeur en tire. Rien ne s'y saisit ; la saisie en attente sur l'écran précédent y est comprise. |
 | **Saisie du jour** | En appoint : un bouton par acte au fil de la journée, ou les totaux du jour d'un coup. |
 | **Bordereaux** | Édite le bordereau du mois — le mois du registre dans un classeur autonome, montants en formules — le range, en garde l'historique et montre l'évolution. |
 | **Rectifications** | Deux tableaux côte à côte : à gauche le registre réel, non modifiable ; à droite le corrigé, qu'on modifie. L'écart devient une rectification motivée. Suivent le journal des corrections du mois et leur effet sur les totaux. |
@@ -106,12 +106,29 @@ patients, chirurgie, recettes, CA déclaré, caisse, dû CNAM ; puis une ligne d
 détail (cataractes, laser, divers, dépenses). Quand une modification est en
 attente, chaque tuile affiche en plus ce qu'elle changerait.
 
-Le **détail par journée** — colonnes U, X, Z, AB, AC et l'écart en attente —
-est sur la page suivante, **Totaux du mois**, avec son export. Les deux écrans
-partagent le même calcul (`app_utils.calculs_du_mois`) : deux copies finiraient
-par diverger, et ce sont les formules du classeur qu'elles reproduisent. La
-**saisie en attente** — tapée, pas encore enregistrée — y est comprise : elle
-vit dans l'état de session et suit d'une page à l'autre.
+Le **détail par journée** est sur la page suivante, **Totaux du mois**, avec son
+export. Les deux écrans partagent le même calcul (`app_utils.calculs_du_mois`) :
+deux copies finiraient par diverger, et ce sont les formules du classeur qu'elles
+reproduisent. La **saisie en attente** — tapée, pas encore enregistrée — y est
+comprise : elle vit dans l'état de session et suit d'une page à l'autre.
+
+### Les seize colonnes calculées
+
+Le classeur calcule seize colonnes, et la page des totaux les montre **toutes**,
+en deux tableaux parce que dix-neuf colonnes d'un seul tenant déborderaient :
+
+- **ce que chaque poste rapporte** — D (APCI), F et G (tiers payant reçu et
+  reste), I (remboursement), K (assurance), M (payant), O et Q (cataractes),
+  W (TVA tiers payant) : le compteur de la journée multiplié par son tarif ;
+- **ce que le classeur en tire** — U (recettes), X (caisse), Z (dû CNAM),
+  AA (à verser à la banque), AB (patients), AC (CA à déclarer), AD (TVA
+  déduite).
+
+La liste vit à un seul endroit, `model.CALCULES`, et **un test impose qu'elle
+couvre `config.CALC_COLS` exactement**, puis que chacune de ses entrées soit
+réellement à l'écran. Sans ce garde-fou, une colonne calculée peut rester hors
+de l'écran sans que rien ne le signale : c'est arrivé à « à verser à la banque »
+sur les bordereaux, puis à elle et dix autres sur cette page.
 
 Les **largeurs de colonnes sont posées en pixels**, pas laissées au calcul
 automatique : à douze colonnes, les en-têtes se faisaient rogner (« Rembo »,

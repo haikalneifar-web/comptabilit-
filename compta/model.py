@@ -49,6 +49,36 @@ LIBELLES_TARIFS: dict[str, str] = {
     "t_tva_tp": "Complément tiers payant (colonne W)",
 }
 
+# Les seize colonnes que le classeur calcule, lisibles : lettre, libellé,
+# attribut de `Journee`, et le groupe où elles se lisent — ce que chaque poste
+# rapporte d'un côté, ce que le classeur en tire de l'autre.
+#
+# C'est la liste qui fait foi pour les afficher. Un test impose qu'elle couvre
+# `config.CALC_COLS` exactement : sans lui, une colonne calculée peut rester
+# hors de l'écran sans que rien ne le signale — c'est ce qui était arrivé à
+# « à verser à la banque », puis à dix autres.
+CALCULES: list[tuple[str, str, str, str]] = [
+    ("D",  "APCI",             "apci_m",      "poste"),
+    ("F",  "TP reçu",          "tp_recu",     "poste"),
+    ("G",  "TP reste",         "tp_reste",    "poste"),
+    ("I",  "Remboursement",    "remb_m",      "poste"),
+    ("K",  "Assurance",        "star_m",      "poste"),
+    ("M",  "Payant",           "pay_m",       "poste"),
+    ("O",  "Cataracte CNAM",   "cat_cnam_m",  "poste"),
+    ("Q",  "Cataracte pay.",   "cat_pay_m",   "poste"),
+    ("W",  "TVA TP",           "tva_tp",      "poste"),
+    ("U",  "Recettes",         "recettes",    "total"),
+    ("X",  "Caisse",           "caisse",      "total"),
+    ("Z",  "Dû CNAM",          "charge_cnam", "total"),
+    ("AA", "À verser banque",  "banque",      "total"),
+    ("AB", "Patients",         "patients",    "total"),
+    ("AC", "CA déclaré",       "ca_declare",  "total"),
+    ("AD", "TVA déduite",      "tva_deduite", "total"),
+]
+
+CALCULES_POSTE = [c for c in CALCULES if c[3] == "poste"]
+CALCULES_TOTAL = [c for c in CALCULES if c[3] == "total"]
+
 COMPTEURS = ["apci_n", "tp_n", "remb_n", "star_n", "pay_n", "cat_cnam_n", "cat_pay_n"]
 MONTANTS = ["laser_dec", "laser_nd", "divers", "depenses"]
 CHAMPS_SAISIE = COMPTEURS + MONTANTS

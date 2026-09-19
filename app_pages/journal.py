@@ -195,7 +195,8 @@ with st.container(horizontal=True, vertical_alignment="center"):
     st.page_link("app_pages/totaux.py",
                  label="Voir ce que les formules en tirent, jour par jour",
                  icon=":material/functions:")
-    st.caption("Colonnes U, X, Z, AB, AC — la saisie en attente y est comprise.")
+    st.caption("Les seize colonnes calculées du classeur — la saisie en "
+               "attente y est comprise.")
 
 
 def lien_classeur() -> None:

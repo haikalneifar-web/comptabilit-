@@ -12,8 +12,8 @@ import streamlit as st
 
 from compta import export, store
 from compta.config import LIBELLES_CHAMPS, MOIS_FR
-from compta.model import (CHAMPS_SAISIE, COMPTEURS, MONTANTS, date_longue,
-                          tnd)
+from compta.model import (CALCULES, CHAMPS_SAISIE, COMPTEURS, MONTANTS,
+                          date_longue, tnd)
 
 
 @st.cache_resource
@@ -114,15 +114,14 @@ def calculs_du_mois(par_date: dict, tarifs: dict, frontiere,
                 setattr(journee, champ,
                         float(valeur) if champ in MONTANTS else int(valeur))
         journees.append(journee)
+        # les seize colonnes calculées du classeur, pas une sélection : la liste
+        # vient de `model.CALCULES`, que le test tient à jour face au classeur
         calculees.append({
             "Date": date,
             "État": ("Rectifiée" if ligne["rectifiee"] else
                      "Clôturée" if ligne["cloture"] else "Ouverte"),
-            "Patients": journee.patients,
-            "Recettes": journee.recettes,
-            "CA déclaré": journee.ca_declare,
-            "Caisse": journee.caisse,
-            "Dû CNAM": journee.charge_cnam,
+            **{libelle: getattr(journee, attribut)
+               for _, libelle, attribut, _ in CALCULES},
             "Δ en attente": journee.recettes - ligne["recettes"],
         })
     return journees, calculees
