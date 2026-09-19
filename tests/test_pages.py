@@ -739,6 +739,24 @@ tuiles_rectif = {m.label: m for m in at.metric}
 verifier("une tuile par colonne calculée, sur les valeurs rectifiées",
          list(tuiles_rectif)[:16] == [libelle for _, libelle, _, _ in CALCULES],
          f"({list(tuiles_rectif)[:16]})")
+
+# Le bandeau est au-dessus de la grille et y reste collé : on corrige une ligne
+# et on voit bouger les totaux sans quitter la grille des yeux.
+arbre_rectif = parcours(at.main)
+place = lambda test: next((i for i, n in enumerate(arbre_rectif) if test(n)), None)  # noqa: E731
+verifier("les tuiles passent au-dessus de la grille",
+         (i_t := place(lambda n: n[0] == "metric")) is not None
+         and (i_g := place(lambda n: n[0] == "dataframe")) is not None
+         and i_t < i_g, f"(tuiles en {i_t}, grille en {i_g})")
+styles = "\n".join(m.value for m in at.markdown)
+verifier("et le bandeau est collé en haut", "position: sticky" in styles)
+verifier("ses tuiles sont resserrées",
+         "stMetricValue" in styles and "st-key-tuiles_rectif" in styles)
+# seize tuiles sur deux rangées de huit — on ne compte que les colonnes situées
+# avant la grille : celles du journal des corrections viennent bien après
+colonnes_bandeau = sum(1 for n in arbre_rectif[:i_g] if n[0] == "column")
+verifier("elles tiennent sur deux rangées de huit",
+         colonnes_bandeau == 16, f"({colonnes_bandeau} colonnes avant la grille)")
 for lettre, libelle, attribut, _ in CALCULES:
     attendu_corrige = sum(getattr(j, attribut) for j in mois_corrige)
     verifier(f"tuile {lettre} ({libelle}) = total rectifié du mois",

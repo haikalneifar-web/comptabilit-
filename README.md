@@ -90,7 +90,7 @@ test tient cet ordre : `st.navigation` ne l'expose pas, il se relit à la source
 |---|---|
 | **Mois comptable** | L'écran de saisie, ouvert sur le mois à reprendre : une grille pleine largeur, une ligne par journée, et les totaux du mois en tuiles sous le tableau. C'est là qu'on saisit, qu'on corrige et qu'on rectifie. |
 | **Totaux du mois** | Les **seize colonnes** que le classeur calcule : leurs totaux du mois en tuiles, et le détail journée par journée pour ce que le classeur en tire. Rien ne s'y saisit ; la saisie en attente sur l'écran précédent y est comprise. |
-| **Rectifications** | Une grille, celle qu'on modifie : le registre corrigé. L'écart avec le réel — qui se lit sur *Mois comptable*, vue « Réel » — devient une rectification motivée. Sous la grille, **les seize colonnes calculées sur les valeurs rectifiées**, avec l'écart au réel sous chaque tuile. Suivent le journal des corrections et leur effet jour par jour. |
+| **Rectifications** | Une grille, celle qu'on modifie : le registre corrigé. L'écart avec le réel — qui se lit sur *Mois comptable*, vue « Réel » — devient une rectification motivée. **Au-dessus, collées en haut de la page**, les seize colonnes calculées sur les valeurs rectifiées, avec l'écart au réel sous chaque tuile. Suivent le journal des corrections et leur effet jour par jour. |
 | **Saisie du jour** | En appoint : un bouton par acte au fil de la journée, ou les totaux du jour d'un coup. |
 | **Bordereaux** | Édite le bordereau du mois — le mois du registre dans un classeur autonome, montants en formules — le range, en garde l'historique et montre l'évolution. |
 | **Tableau de bord** | Évolution mensuelle, composition des recettes, volume de cataractes, récapitulatif annuel. |
@@ -235,10 +235,17 @@ colonne `Δ en attente` qui chiffre l'effet de la modification en cours avant
 tout enregistrement.
 
 Les totaux sont en tuiles sous la grille, calculés sur ce qu'elle affiche —
-modifications en attente comprises. Sur la page *Rectifications*, ce sont
-**les seize colonnes** qui s'affichent ainsi, calculées sur les valeurs
-rectifiées, et chaque tuile chiffre en plus **l'écart au registre réel** : on
-voit poste par poste ce qu'une correction change, avant de l'enregistrer.
+modifications en attente comprises.
+
+Sur la page *Rectifications*, ce sont **les seize colonnes** qui s'affichent
+ainsi, calculées sur les valeurs rectifiées, et chaque tuile chiffre en plus
+**l'écart au registre réel** : on voit poste par poste ce qu'une correction
+change, avant de l'enregistrer. Elles sont **au-dessus de la grille et y restent
+collées** — deux rangées de huit, en petit corps — pour qu'on corrige une ligne
+et qu'on voie bouger les totaux sans quitter la grille des yeux. C'est le seul
+endroit où l'app pose du CSS (`app_utils.bandeau_colle`) : `position: sticky` et
+les corps de `stMetricLabel`, `stMetricValue`, `stMetricDelta`, appliqués au
+seul conteneur `st-key-tuiles_rectif`.
 
 Les deux grilles mensuelles — saisie et rectification — partagent la même
 configuration de colonnes (`app_utils.config_grille`) : mêmes libellés courts,

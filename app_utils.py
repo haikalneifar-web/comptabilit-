@@ -138,6 +138,45 @@ def brouillon_du_mois(annee: int, mois: int) -> dict:
     return st.session_state.get("_brouillons", {}).get(f"grille_{annee}_{mois}", {})
 
 
+def bandeau_colle(cle: str) -> None:
+    """Rend un conteneur de tuiles compact et collé en haut de la page.
+
+    À appeler avant de remplir `st.container(key=cle)`. Les tuiles y sont
+    resserrées — libellé, valeur et écart en petits corps — pour qu'une rangée
+    en porte huit, et le bloc reste visible pendant qu'on travaille dans la
+    grille, en dessous : c'est là tout son intérêt, on tape et on voit bouger.
+
+    Les couleurs sont celles de `.streamlit/config.toml`, écrites en dur : le
+    thème de l'app est fixe, et une variable CSS de plus se périmerait à la
+    prochaine version de Streamlit.
+    """
+    st.markdown(
+        f"""
+        <style>
+        .st-key-{cle} {{
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            background: #fbfcfd;
+            padding: .3rem 0 .45rem;
+            border-bottom: 1px solid #dbe2e8;
+        }}
+        .st-key-{cle} [data-testid="stMetric"] {{ padding: .3rem .45rem; }}
+        .st-key-{cle} [data-testid="stMetricLabel"] p {{
+            font-size: .68rem; line-height: 1.15;
+        }}
+        .st-key-{cle} [data-testid="stMetricValue"] {{
+            font-size: .95rem; line-height: 1.25;
+        }}
+        .st-key-{cle} [data-testid="stMetricDelta"] {{
+            font-size: .66rem; padding-top: 0;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 # la colonne AB compte des patients, la AD porte des centimes : les autres sont
 # des dinars ronds
 _TUILES_ENTIERES = {"patients"}
