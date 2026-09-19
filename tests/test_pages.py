@@ -595,6 +595,22 @@ verifier("le mois affiché est celui demandé",
          f"({at.session_state['mois_travail']})")
 verifier("les recettes du mois sont affichées", metrique(at, "Recettes") is not None)
 verifier("le CA à déclarer aussi", metrique(at, "CA à déclarer") is not None)
+for poste in ("Caisse", "À la charge CNAM", "À verser à la banque", "Patients"):
+    verifier(f"« {poste} » est au bandeau", metrique(at, poste) is not None)
+detail = table(at, "Recettes", "À verser banque")
+verifier("le détail du mois montre le à-verser-à-la-banque",
+         detail is not None and len(detail) > 0,
+         "(colonne absente du tableau des journées)")
+# l'aperçu doit porter les 28 colonnes du fichier, pas une sélection
+libelles = [libelle for _, libelle, _ in _bordereau.APERCU]
+manquantes = [c for c in libelles
+              if detail is None or c not in detail.columns]
+verifier("aucune colonne du bordereau ne manque à l'aperçu",
+         not manquantes, f"({manquantes})")
+verifier("les totaux hors bandeau sont dits quelque part",
+         any("TVA déduite" in c.value and "dépenses" in c.value
+             for c in at.caption),
+         "(TVA déduite, non déclaré, laser, divers, dépenses)")
 verifier("aucun bordereau n'est encore édité",
          any("pas encore été édité" in c.value for c in at.caption),
          "(historique non vide au départ)")

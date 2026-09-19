@@ -100,6 +100,47 @@ def nom_fichier(annee: int, mois: int) -> str:
     return f"bordereau-{annee}-{mois:02d}-{sans_accent}.xlsx"
 
 
+# Les 28 colonnes chiffrées, lisibles : lettre du classeur, libellé, et
+# l'attribut de `Journee` qui porte la valeur. C'est ce qui permet d'afficher le
+# bordereau à l'écran **sans en perdre une colonne** — un aperçu qui oublierait
+# les dépenses ou le laser montrerait autre chose que ce qui part.
+# `COLONNES` et cette liste se tiennent : un test le vérifie.
+APERCU: list[tuple[str, str, str]] = [
+    ("C", "APCI", "apci_n"),
+    ("D", "APCI mont", "apci_m"),
+    ("E", "TP", "tp_n"),
+    ("F", "TP reçu", "tp_recu"),
+    ("G", "TP reste", "tp_reste"),
+    ("H", "Remb", "remb_n"),
+    ("I", "Remb mont", "remb_m"),
+    ("J", "Assurance", "star_n"),
+    ("K", "Assurance mont", "star_m"),
+    ("L", "Payant", "pay_n"),
+    ("M", "Payant mont", "pay_m"),
+    ("N", "Cat. CNAM", "cat_cnam_n"),
+    ("O", "Cat. CNAM mont", "cat_cnam_m"),
+    ("P", "Cat. payante", "cat_pay_n"),
+    ("Q", "Cat. payante mont", "cat_pay_m"),
+    ("R", "Laser déclaré", "laser_dec"),
+    ("S", "Laser non déclaré", "laser_nd"),
+    ("T", "Divers", "divers"),
+    ("U", "Recettes", "recettes"),
+    ("V", "Dépenses", "depenses"),
+    ("W", "TVA TP", "tva_tp"),
+    ("X", "Caisse", "caisse"),
+    ("Y", "À la charge STAR", "star_m"),
+    ("Z", "À la charge CNAM", "charge_cnam"),
+    ("AA", "À verser banque", "banque"),
+    ("AB", "Patients", "patients"),
+    ("AC", "CA à déclarer", "ca_declare"),
+    ("AD", "TVA déduite", "tva_deduite"),
+]
+
+# les colonnes qui comptent des actes ou des patients, pas des dinars
+APERCU_COMPTEURS = {libelle for lettre, libelle, _ in APERCU
+                    if lettre in COMPTEURS_COL}
+
+
 # --- totaux ------------------------------------------------------------------
 
 POSTES_TOTAUX: list[tuple[str, str, str]] = [
@@ -110,6 +151,9 @@ POSTES_TOTAUX: list[tuple[str, str, str]] = [
     ("caisse", "Caisse", "X"),
     ("charge_cnam", "À la charge CNAM", "Z"),
     ("banque", "À verser à la banque", "AA"),
+    ("laser_dec", "Laser déclaré", "R"),
+    ("laser_nd", "Laser non déclaré", "S"),
+    ("divers", "Divers reçu", "T"),
     ("depenses", "Dépenses", "V"),
     ("patients", "Patients", "AB"),
     ("cat_cnam_n", "Cataractes CNAM", "N"),

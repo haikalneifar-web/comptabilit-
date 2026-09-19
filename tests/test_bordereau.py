@@ -187,10 +187,45 @@ verifier("les recettes renvoient à la ligne de total du mois",
 verifier("le CA à déclarer renvoie à la colonne AC",
          valeurs.get("CA à déclarer") == "='août 2026'!AC35",
          f"({valeurs.get('CA à déclarer')!r})")
+verifier("« à verser à la banque » y figure et renvoie à la colonne AA",
+         valeurs.get("À verser à la banque") == "='août 2026'!AA35",
+         f"({valeurs.get('À verser à la banque')!r})")
+verifier("son en-tête est en place sur la feuille du mois",
+         (ws["AA1"].value, ws["AA2"].value, ws["AA3"].value)
+         == ("a verser", "a", "la banque"),
+         f"({ws['AA1'].value!r}, {ws['AA2'].value!r}, {ws['AA3'].value!r})")
 verifier("aucun total n'est recopié en dur",
          all(isinstance(valeurs.get(libelle), str)
              and str(valeurs.get(libelle)).startswith("=")
              for _, libelle, _ in bordereau.POSTES_TOTAUX))
+
+print("\n6 bis. Rien ne se perd entre le fichier et ce qu'on en montre")
+# Le garde-fou : l'aperçu affiché dans l'app doit couvrir exactement les
+# colonnes que le fichier emporte. Sans ce test, ajouter une colonne au
+# bordereau sans l'ajouter à l'aperçu passerait inaperçu — c'est exactement
+# comme ça que « à verser à la banque » avait disparu de l'écran.
+lettres_apercu = [lettre for lettre, _, _ in bordereau.APERCU]
+verifier("l'aperçu couvre les 28 colonnes chiffrées, dans le même ordre",
+         lettres_apercu == bordereau.COLONNES,
+         f"(manquantes : {sorted(set(bordereau.COLONNES) - set(lettres_apercu))}, "
+         f"en trop : {sorted(set(lettres_apercu) - set(bordereau.COLONNES))})")
+verifier("chaque colonne de l'aperçu porte un libellé distinct",
+         len({libelle for _, libelle, _ in bordereau.APERCU}) == len(bordereau.APERCU))
+verifier("chaque colonne de l'aperçu sait où lire sa valeur",
+         all(hasattr(aout[0], champ) for _, _, champ in bordereau.APERCU),
+         f"({[c for _, _, c in bordereau.APERCU if not hasattr(aout[0], c)]})")
+verifier("les compteurs de l'aperçu sont bien des compteurs",
+         bordereau.APERCU_COMPTEURS == {"APCI", "TP", "Remb", "Assurance",
+                                        "Payant", "Cat. CNAM", "Cat. payante",
+                                        "Patients"},
+         f"({sorted(bordereau.APERCU_COMPTEURS)})")
+# et le récapitulatif ne doit oublier aucun poste de recette
+postes = {colonne for _, _, colonne in bordereau.POSTES_TOTAUX}
+verifier("le récapitulatif reprend les recettes, le CA, la caisse, le dû CNAM, "
+         "la banque et la TVA",
+         {"U", "AC", "X", "Z", "AA", "AD"} <= postes, f"({sorted(postes)})")
+verifier("il reprend aussi le laser, le divers et les dépenses",
+         {"R", "S", "T", "V"} <= postes, f"({sorted(postes)})")
 
 print("\n7. Les totaux annoncés sont ceux des journées")
 t = bordereau.totaux(aout)
@@ -205,6 +240,16 @@ verifier("le non déclaré est l'écart des deux",
 verifier("les jours actifs ne comptent que les journées qui rapportent",
          t["jours_actifs"] == sum(1 for j in aout if j.recettes > 0))
 verifier("le mois entier est compté", t["jours"] == 31)
+verifier("le à-verser-à-la-banque est de la partie",
+         abs(t["banque"] - sum(j.banque for j in aout)) < 0.005)
+# les agrégats mensuels le portent aussi, sinon l'écart d'un mois à l'autre ne
+# s'affiche pas sur la page
+agregats = {r["mois"]: r for r in store.agregat_mensuel(conn)}
+verifier("les agrégats mensuels portent la banque",
+         "banque" in agregats["2026-08"], f"({sorted(agregats['2026-08'])})")
+verifier("et ils y retrouvent le même total",
+         abs(float(agregats["2026-08"]["banque"]) - t["banque"]) < 0.5,
+         f"({agregats['2026-08']['banque']} vs {t['banque']})")
 
 print("\n8. Enregistrer : l'édition précédente est archivée, pas écrasée")
 dossier = tmp / "bordereaux"

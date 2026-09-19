@@ -514,7 +514,7 @@ def marquer_exporte(conn, dates: list[dt.date]) -> None:
 
 _SOMMES = """
     SUM(recettes) recettes, SUM(ca_declare) ca_declare, SUM(caisse) caisse,
-    SUM(charge_cnam) charge_cnam, SUM(tva_deduite) tva_deduite,
+    SUM(charge_cnam) charge_cnam, SUM(banque) banque, SUM(tva_deduite) tva_deduite,
     SUM(patients) patients, SUM(actes_chirurgie) actes_chirurgie,
     SUM(cat_cnam_n) cat_cnam_n, SUM(cat_pay_n) cat_pay_n,
     SUM(pay_n*t_pay) pay_m, SUM(remb_n*t_remb) remb_m,
@@ -528,7 +528,8 @@ def _metriques(j: Journee) -> dict[str, float]:
     """Les mêmes grandeurs que `_SOMMES`, pour une journée."""
     return {
         "recettes": j.recettes, "ca_declare": j.ca_declare, "caisse": j.caisse,
-        "charge_cnam": j.charge_cnam, "tva_deduite": j.tva_deduite,
+        "charge_cnam": j.charge_cnam, "banque": j.banque,
+        "tva_deduite": j.tva_deduite,
         "patients": float(j.patients), "actes_chirurgie": float(j.actes_chirurgie),
         "cat_cnam_n": float(j.cat_cnam_n), "cat_pay_n": float(j.cat_pay_n),
         "pay_m": j.pay_m, "remb_m": j.remb_m, "apci_m": j.apci_m, "star_m": j.star_m,

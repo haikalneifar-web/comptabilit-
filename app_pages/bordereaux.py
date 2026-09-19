@@ -84,18 +84,27 @@ def _delta(champ: str, reference: dict | None) -> str | None:
     return f"{ecart:+,.0f}".replace(",", " ") + " TND"
 
 
-cols = st.columns(5)
+# les six totaux que le classeur tire du mois, dans l'ordre de ses colonnes
+cols = st.columns(6)
 cols[0].metric("Recettes", montant(totaux["recettes"]),
-               delta=_delta("recettes", mois_avant))
+               delta=_delta("recettes", mois_avant),
+               help="Colonne U du classeur.")
 cols[1].metric("CA à déclarer", montant(totaux["ca_declare"]),
-               delta=_delta("ca_declare", mois_avant))
+               delta=_delta("ca_declare", mois_avant),
+               help="Colonne AC.")
 cols[2].metric("Caisse", montant(totaux["caisse"]),
-               delta=_delta("caisse", mois_avant))
+               delta=_delta("caisse", mois_avant),
+               help="Colonne X : ce qui reste en caisse, dépenses déduites.")
 cols[3].metric("À la charge CNAM", montant(totaux["charge_cnam"]),
-               delta=_delta("charge_cnam", mois_avant))
-cols[4].metric("Patients", f"{int(totaux['patients'])}",
+               delta=_delta("charge_cnam", mois_avant),
+               help="Colonne Z : APCI, part CNAM du tiers payant, cataracte CNAM.")
+cols[4].metric("À verser à la banque", montant(totaux["banque"]),
+               delta=_delta("banque", mois_avant),
+               help="Colonne AA : =SUM(F;I;K;M;O/2).")
+cols[5].metric("Patients", f"{int(totaux['patients'])}",
                delta=(f"{int(totaux['patients']) - int(mois_avant['patients']):+d}"
-                      if mois_avant and mois_avant.get("patients") else None))
+                      if mois_avant and mois_avant.get("patients") else None),
+               help="Colonne AB.")
 
 st.caption(
     f"{int(totaux['jours_actifs'])} jour(s) renseigné(s) sur "
@@ -103,6 +112,18 @@ st.caption(
     "chirurgie · écarts calculés sur le mois précédent"
     + (f" · même mois l'an dernier : {montant(float(an_avant['recettes'] or 0))} "
        "de recettes" if an_avant else "")
+)
+
+# le reste de ce que le bordereau totalise : tout y passe, rien ne reste hors
+# de vue sous prétexte que le bandeau ne tient que six chiffres
+st.caption(
+    "TVA déduite **" + montant(totaux["tva_deduite"]) + "** (AD) · "
+    "non déclaré **" + montant(totaux["non_declare"]) + "** (U − AC) · "
+    "laser **" + montant(totaux["laser_dec"] + totaux["laser_nd"]) + "** (R+S) · "
+    "divers **" + montant(totaux["divers"]) + "** (T) · "
+    "dépenses **" + montant(totaux["depenses"]) + "** (V) · "
+    f"cataractes **{int(totaux['cat_cnam_n'])} CNAM / "
+    f"{int(totaux['cat_pay_n'])} payantes** (N, P)"
 )
 
 if totaux["jours_actifs"] == 0:
@@ -204,25 +225,29 @@ if produit:
 
 with st.expander(f"Les {len(journees)} journées telles qu'elles partiront",
                  icon=":material/table_rows:"):
+    st.caption(
+        "**Les 28 colonnes chiffrées du bordereau**, dans l'ordre du classeur — "
+        "rien de moins que ce que le fichier emporte. Le nom de chaque colonne "
+        "rappelle sa lettre."
+    )
     st.dataframe(
         pd.DataFrame([
-            {
-                "Date": j.date,
-                "Jour": j.nom_jour.capitalize(),
-                "APCI": j.apci_n, "TP": j.tp_n, "Remb": j.remb_n,
-                "Assurance": j.star_n, "Payant": j.pay_n,
-                "Cat. CNAM": j.cat_cnam_n, "Cat. payante": j.cat_pay_n,
-                "Recettes": j.recettes, "CA à déclarer": j.ca_declare,
-                "Caisse": j.caisse, "Patients": j.patients,
-            }
+            {"Date": j.date, "Jour": j.nom_jour.capitalize()}
+            | {libelle: getattr(j, champ)
+               for _, libelle, champ in bordereau.APERCU}
             for j in journees
         ]),
         hide_index=True,
         column_config={
             "Date": st.column_config.DateColumn(format="DD/MM/YYYY"),
-            "Recettes": st.column_config.NumberColumn(format="%.0f"),
-            "CA à déclarer": st.column_config.NumberColumn(format="%.0f"),
-            "Caisse": st.column_config.NumberColumn(format="%.0f"),
+            **{
+                libelle: st.column_config.NumberColumn(
+                    format="%d" if libelle in bordereau.APERCU_COMPTEURS
+                    else "%.0f",
+                    help=f"Colonne {lettre} du classeur.",
+                )
+                for lettre, libelle, _ in bordereau.APERCU
+            },
         },
         height=420,
     )
