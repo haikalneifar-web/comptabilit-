@@ -363,6 +363,11 @@ verifier("le tableau porte ce que le classeur en tire",
 verifier("les trois formats sont proposés",
          sorted(b.label for b in at.get("download_button"))
          == ["CSV", "Excel", "PDF"])
+styles_totaux = "\n".join(m.value for m in at.markdown)
+verifier("les deux tuiles colorées le sont aussi sur cette page",
+         ".st-key-tuile_banque" in styles_totaux
+         and ".st-key-tuile_ca_declare" in styles_totaux,
+         "(pas de teinte sur la page des totaux)")
 from app_utils import calculs_du_mois as _calculs  # noqa: E402
 from app_utils import mois_affiche as _mois  # noqa: E402
 
@@ -752,6 +757,23 @@ styles = "\n".join(m.value for m in at.markdown)
 verifier("et le bandeau est collé en haut", "position: sticky" in styles)
 verifier("ses tuiles sont resserrées",
          "stMetricValue" in styles and "st-key-tuiles_rectif" in styles)
+
+# deux colonnes se cherchent du regard : elles portent une couleur
+from app_utils import COULEURS_TUILES  # noqa: E402
+
+verifier("« à verser à la banque » est en jaune",
+         f".st-key-tuile_banque" in styles
+         and COULEURS_TUILES["banque"][0] in styles,
+         f"({COULEURS_TUILES['banque']})")
+verifier("« CA déclaré » est en vert clair",
+         ".st-key-tuile_ca_declare" in styles
+         and COULEURS_TUILES["ca_declare"][0] in styles,
+         f"({COULEURS_TUILES['ca_declare']})")
+verifier("seules ces deux-là sont teintées",
+         set(COULEURS_TUILES) == {"banque", "ca_declare"},
+         f"({sorted(COULEURS_TUILES)})")
+verifier("et ce sont bien deux colonnes calculées du classeur",
+         set(COULEURS_TUILES) <= {attribut for _, _, attribut, _ in CALCULES})
 # seize tuiles sur deux rangées de huit — on ne compte que les colonnes situées
 # avant la grille : celles du journal des corrections viennent bien après
 colonnes_bandeau = sum(1 for n in arbre_rectif[:i_g] if n[0] == "column")

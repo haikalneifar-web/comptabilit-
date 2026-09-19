@@ -242,10 +242,17 @@ ainsi, calculées sur les valeurs rectifiées, et chaque tuile chiffre en plus
 **l'écart au registre réel** : on voit poste par poste ce qu'une correction
 change, avant de l'enregistrer. Elles sont **au-dessus de la grille et y restent
 collées** — deux rangées de huit, en petit corps — pour qu'on corrige une ligne
-et qu'on voie bouger les totaux sans quitter la grille des yeux. C'est le seul
-endroit où l'app pose du CSS (`app_utils.bandeau_colle`) : `position: sticky` et
-les corps de `stMetricLabel`, `stMetricValue`, `stMetricDelta`, appliqués au
+et qu'on voie bouger les totaux sans quitter la grille des yeux. C'est l'un des deux
+endroits où l'app pose du CSS (`app_utils.bandeau_colle`) : `position: sticky`
+et les corps de `stMetricLabel`, `stMetricValue`, `stMetricDelta`, appliqués au
 seul conteneur `st-key-tuiles_rectif`.
+
+**Deux tuiles portent une couleur**, sur les deux pages : « à verser à la
+banque » en **jaune**, « CA déclaré » en **vert clair** — ce sont celles qu'on
+cherche du regard le plus souvent. `st.metric` ne prend pas de clé : chacune est
+posée dans un conteneur qui, lui, en porte une, et Streamlit en fait la classe
+`st-key-tuile_<colonne>` que la feuille de style vise
+(`app_utils.COULEURS_TUILES`).
 
 Les deux grilles mensuelles — saisie et rectification — partagent la même
 configuration de colonnes (`app_utils.config_grille`) : mêmes libellés courts,

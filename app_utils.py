@@ -182,6 +182,23 @@ def bandeau_colle(cle: str) -> None:
 _TUILES_ENTIERES = {"patients"}
 _TUILES_CENTIMES = {"tva_deduite"}
 
+# Deux colonnes se cherchent du regard plus souvent que les autres : ce qu'il
+# faut verser à la banque, et le CA à déclarer. Elles portent donc une couleur.
+# `attribut -> (fond, bordure)`, teintes claires pour rester lisibles sur le
+# fond de l'app.
+COULEURS_TUILES: dict[str, tuple[str, str]] = {
+    "banque": ("#fff5d1", "#e0c15a"),        # jaune
+    "ca_declare": ("#e2f5e9", "#8bcda5"),    # vert clair
+}
+
+_STYLE_COULEURS = "<style>" + "".join(
+    f'.st-key-tuile_{attribut} [data-testid="stMetric"] {{'
+    f"  background: {fond};"
+    f"  border-color: {bordure};"
+    f"}}"
+    for attribut, (fond, bordure) in COULEURS_TUILES.items()
+) + "</style>"
+
 
 def tuiles_calculees(colonnes: list, journees: list,
                      reference: list | None = None, par_ligne: int = 5) -> None:
@@ -193,10 +210,17 @@ def tuiles_calculees(colonnes: list, journees: list,
     """
     somme = lambda attribut, source: sum(getattr(j, attribut) for j in source)  # noqa: E731
 
+    # `st.metric` ne prend pas de clé : pour teinter une tuile précise, on la
+    # pose dans un conteneur qui, lui, en porte une — Streamlit en fait une
+    # classe `st-key-…` que la feuille de style vise.
+    st.markdown(_STYLE_COULEURS, unsafe_allow_html=True)
+
     for depart in range(0, len(colonnes), par_ligne):
         tranche = colonnes[depart:depart + par_ligne]
         for col, (lettre, libelle, attribut, _) in zip(st.columns(par_ligne),
                                                        tranche):
+            if attribut in COULEURS_TUILES:
+                col = col.container(key=f"tuile_{attribut}")
             total = somme(attribut, journees)
             if attribut in _TUILES_ENTIERES:
                 valeur = f"{int(total)}"
