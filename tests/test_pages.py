@@ -56,6 +56,12 @@ def metrique(at, libelle):
     return None
 
 
+def nombre_de_tuile(texte):
+    """Le nombre lu sur une tuile : « 1 724,43 TND » → 1724.43."""
+    chiffres = "".join(c for c in str(texte) if c.isdigit() or c == ",")
+    return float(chiffres.replace(",", ".")) if chiffres else 0.0
+
+
 def lancer(page=None, etat=None):
     at = AppTest.from_file(str(PROJET / "streamlit_app.py"), default_timeout=30)
     for k, v in (etat or {}).items():
@@ -409,11 +415,8 @@ journees_juillet = [store.lire_jour_corrige(conn, dt.date(2026, 7, j),
 conn.close()
 for lettre, libelle, attribut, _ in CALCULES:
     attendu_total = sum(getattr(j, attribut) for j in journees_juillet)
-    chiffres = "".join(c for c in tuiles[libelle].value
-                       if c.isdigit() or c == ",")
-    lu = float(chiffres.replace(",", ".")) if chiffres else 0.0
     verifier(f"tuile {lettre} ({libelle}) = total du mois",
-             abs(lu - abs(attendu_total)) <= 1.0,
+             abs(nombre_de_tuile(tuiles[libelle].value) - abs(attendu_total)) <= 1.0,
              f"(tuile {tuiles[libelle].value!r}, registre {attendu_total:.2f})")
 
 at.segmented_control(key="registre_totaux").select("Réel").run()
@@ -727,6 +730,42 @@ verifier("et chiffre les rectifications déjà enregistrées, face au réel",
          recettes[0].delta.replace(" ", "").replace("TND", "")
          == f"{ecart_deja_la:+.0f}",
          f"({recettes[0].delta} vs {ecart_deja_la:+.0f})")
+
+# --- les tuiles font le calcul sur les valeurs rectifiées -------------------
+# Les mêmes seize colonnes que sur « Totaux du mois », mais calculées sur le
+# registre corrigé, avec l'écart au réel sous chaque tuile.
+tuiles_rectif = {m.label: m for m in at.metric}
+# les cinq métriques du journal des corrections suivent les seize tuiles
+verifier("une tuile par colonne calculée, sur les valeurs rectifiées",
+         list(tuiles_rectif)[:16] == [libelle for _, libelle, _, _ in CALCULES],
+         f"({list(tuiles_rectif)[:16]})")
+for lettre, libelle, attribut, _ in CALCULES:
+    attendu_corrige = sum(getattr(j, attribut) for j in mois_corrige)
+    verifier(f"tuile {lettre} ({libelle}) = total rectifié du mois",
+             abs(nombre_de_tuile(tuiles_rectif[libelle].value)
+                 - abs(attendu_corrige)) <= 1.0,
+             f"(tuile {tuiles_rectif[libelle].value!r}, "
+             f"corrigé {attendu_corrige:.2f})")
+
+ecarts_attendus = {
+    libelle: sum(getattr(j, attribut) for j in mois_corrige)
+             - sum(getattr(j, attribut) for j in mois_reel)
+    for _, libelle, attribut, _ in CALCULES
+}
+touchees = [libelle for libelle, e in ecarts_attendus.items() if abs(e) > 0.005]
+verifier("les rectifications déjà enregistrées touchent au moins une colonne",
+         touchees, "(aucun écart réel → corrigé sur le mois)")
+for libelle in touchees:
+    verifier(f"la tuile {libelle} chiffre son écart au réel",
+             tuiles_rectif[libelle].delta
+             and abs(nombre_de_tuile(tuiles_rectif[libelle].delta)
+                     - abs(ecarts_attendus[libelle])) <= 1.0,
+             f"({tuiles_rectif[libelle].delta} vs "
+             f"{ecarts_attendus[libelle]:+.2f})")
+intactes = [libelle for libelle, e in ecarts_attendus.items() if abs(e) <= 0.005]
+verifier("les colonnes que rien ne touche n'affichent pas d'écart",
+         all(not tuiles_rectif[libelle].delta for libelle in intactes),
+         f"({[(l, tuiles_rectif[l].delta) for l in intactes if tuiles_rectif[l].delta]})")
 
 print("\n7 bis. Rectifications — modifier le tableau de droite")
 at = lancer("app_pages/rectifications.py", {

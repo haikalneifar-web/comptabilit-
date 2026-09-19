@@ -42,36 +42,6 @@ def recap_journee(j, colonnes: int = 5) -> None:
     cols[4].metric("Patients", f"{j.patients}")
 
 
-def bandeau_registre(journees: list, reference: list | None = None) -> None:
-    """Totaux d'un tableau, calculés sur ce qu'il affiche.
-
-    `reference` — l'autre registre — fait apparaître l'écart sous chaque total.
-    """
-    somme = lambda champ, source: sum(getattr(j, champ) for j in source)  # noqa: E731
-    postes = [("Recettes", "recettes"), ("CA déclaré", "ca_declare"),
-              ("Caisse", "caisse"), ("Dû CNAM", "charge_cnam")]
-
-    cols = st.columns(len(postes))
-    for col, (libelle, champ) in zip(cols, postes):
-        total = somme(champ, journees)
-        delta = None
-        if reference is not None:
-            ecart = total - somme(champ, reference)
-            if abs(ecart) > 0.005:
-                delta = f"{ecart:+,.0f}".replace(",", " ") + " TND"
-        col.metric(libelle, montant(total), delta=delta)
-
-    patients = somme("patients", journees)
-    chirurgie = somme("actes_chirurgie", journees)
-    detail = f"{patients} patients · {chirurgie} actes de chirurgie"
-    if reference is not None:
-        ecart_p = patients - somme("patients", reference)
-        ecart_c = chirurgie - somme("actes_chirurgie", reference)
-        if ecart_p or ecart_c:
-            detail += f"  ·  écart : {ecart_p:+d} patient(s), {ecart_c:+d} acte(s)"
-    st.caption(detail)
-
-
 # Libellés courts des colonnes de saisie : le nom entier du poste ne tient pas
 # dans une colonne de grille, il reste dans l'infobulle. Partagés par les deux
 # grilles mensuelles — celle de la saisie et celle des rectifications — pour

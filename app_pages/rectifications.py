@@ -15,13 +15,13 @@ import datetime as dt
 import pandas as pd
 import streamlit as st
 
-from app_utils import (bandeau_registre, barre_export, config_grille,
-                       demander_rectification, editeur_persistant, get_conn,
-                       memoriser, montant, oublier, rectification_en_attente,
-                       selecteur_mois, totaux_registre, valeur_champ)
+from app_utils import (barre_export, config_grille, demander_rectification,
+                       editeur_persistant, get_conn, memoriser, montant,
+                       oublier, rectification_en_attente, selecteur_mois,
+                       totaux_registre, tuiles_calculees, valeur_champ)
 from compta import store
 from compta.config import LIBELLES_CHAMPS, MONTANTS_DIRECTS, TOUS_ACTES
-from compta.model import MONTANTS, mois_long
+from compta.model import (CALCULES_POSTE, CALCULES_TOTAL, MONTANTS, mois_long)
 
 conn = get_conn()
 premiere, derniere = store.bornes(conn)
@@ -107,7 +107,6 @@ st.caption(
     "d'origine se lisent sur **Mois comptable**, bouton « Réel » ; elles ne "
     "bougent jamais."
 )
-totaux_corriges = st.container()   # rempli une fois le tableau connu
 edite, ecarts = editeur_persistant(base_corrigee, cle_grille, MONTANTS,
                                    config, height=520)
 zone_export_corrige = st.container()
@@ -121,9 +120,6 @@ for i, ligne_jour in enumerate(cloturees):
         setattr(j, c, float(valeur) if c in MONTANTS else int(valeur))
     journees_corrigees.append(j)
 
-with totaux_corriges:
-    bandeau_registre(journees_corrigees, reference=journees_reelles)
-
 with zone_export_corrige:
     barre_export(
         edite, f"registre_corrige_{annee}-{mois:02d}",
@@ -136,6 +132,35 @@ with zone_export_corrige:
 st.caption(
     f"{len(cloturees)} journée(s) clôturée(s) ce mois-ci. Les journées encore "
     "ouvertes ne figurent pas ici : elles se saisissent dans **Mois comptable**."
+)
+
+# --- ce que les valeurs rectifiées donnent -----------------------------------
+
+# Les mêmes seize colonnes que sur « Totaux du mois », mais calculées sur les
+# valeurs **rectifiées** — corrections déjà enregistrées et modifications en
+# attente comprises. L'écart sous chaque tuile se mesure sur le registre réel :
+# c'est le chiffre qui dit ce que la rectification change, poste par poste.
+st.divider()
+st.subheader(f"Ce que les valeurs rectifiées donnent — {periode}", anchor=False)
+st.caption(
+    "Les seize colonnes que le classeur calcule, sur le registre corrigé. Sous "
+    "chaque tuile, **l'écart au registre réel** : ce que les rectifications de "
+    "ce mois changent, celles en attente comprises."
+)
+
+st.markdown("##### Ce que chaque poste rapporte")
+tuiles_calculees(CALCULES_POSTE, journees_corrigees, journees_reelles,
+                 par_ligne=5)
+st.markdown("##### Ce que le classeur en tire")
+tuiles_calculees(CALCULES_TOTAL, journees_corrigees, journees_reelles,
+                 par_ligne=4)
+
+chirurgie = sum(j.actes_chirurgie for j in journees_corrigees)
+ecart_chirurgie = chirurgie - sum(j.actes_chirurgie for j in journees_reelles)
+st.caption(
+    f"{chirurgie} acte(s) de chirurgie sur ces journées"
+    + (f" ({ecart_chirurgie:+d} par rapport au réel)" if ecart_chirurgie else "")
+    + " · seules les journées clôturées du mois sont comptées ici."
 )
 
 # --- ce qui change et pourquoi ----------------------------------------------
