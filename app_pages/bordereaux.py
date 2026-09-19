@@ -16,8 +16,8 @@ import pandas as pd
 import streamlit as st
 
 from app_utils import get_conn, montant, selecteur_mois
-from compta import bordereau, store, xlsx_io
-from compta.config import BORDEREAUX_DIR
+from compta import bordereau, dossier_comptable, store, xlsx_io
+from compta.config import ARCHIVES_DIR
 from compta.model import mois_long
 
 conn = get_conn()
@@ -45,8 +45,17 @@ if sync["connu"] and not sync["a_jour"]:
 
 # --- choix du mois et du registre --------------------------------------------
 
+# On édite le bordereau d'un mois **terminé**, pas de celui qu'on s'apprête à
+# saisir : arriver ici sur un mois vide n'offrirait qu'un bouton grisé. D'où un
+# défaut différent de celui de la saisie — le mois de la dernière journée
+# renseignée. Le choix fait ailleurs, lui, est respecté : `mois_travail` suit
+# d'une page à l'autre, on ne le repositionne que s'il n'a jamais été résolu.
 if st.session_state.mois_travail is None:
-    st.session_state.mois_travail = store.mois_a_saisir(conn)
+    dernier_rempli = store.dernier_jour_rempli(conn)
+    st.session_state.mois_travail = (
+        (dernier_rempli.year, dernier_rempli.month) if dernier_rempli
+        else store.mois_a_saisir(conn)
+    )
 
 annee, mois = selecteur_mois(premiere, derniere)
 
@@ -133,6 +142,19 @@ if totaux["jours_actifs"] == 0:
         "depuis **Mois comptable** avant de l'éditer.",
         icon=":material/edit_calendar:",
     )
+    # Le mois de travail suit d'une page à l'autre, et l'accueil l'ouvre sur le
+    # mois **à saisir** — vide par définition. Arriver ici par là ne doit pas
+    # être un cul-de-sac : le dernier mois renseigné est à un clic.
+    dernier_rempli = store.dernier_jour_rempli(conn)
+    if dernier_rempli and (dernier_rempli.year, dernier_rempli.month) != (annee, mois):
+        st.button(
+            f"Aller à {mois_long(dernier_rempli.year, dernier_rempli.month)}, "
+            "le dernier mois renseigné",
+            icon=":material/history:",
+            on_click=lambda: st.session_state.update(
+                mois_travail=(dernier_rempli.year, dernier_rempli.month)),
+            key="aller_dernier_mois",
+        )
 
 st.divider()
 
@@ -186,13 +208,31 @@ if editions:
 
 cle_produit = f"bordereau_produit_{cle_mois}"
 
+cible = bordereau.destination(annee, mois)
+dossier_existe = cible.is_dir()
+
 with st.container(horizontal=True, vertical_alignment="center"):
     generer = st.button(
         "Générer le bordereau", icon=":material/description:", type="primary",
         disabled=totaux["jours_actifs"] == 0,
     )
-    st.caption(f"Il sera rangé dans `{BORDEREAUX_DIR / str(annee)}`. Une "
-               "édition précédente du même mois part dans `archives/`.")
+    st.caption(
+        f"Il rejoindra le dossier du mois : `{cible}`"
+        + ("" if dossier_existe else " — **à créer**")
+        + f". Son nom, `{bordereau.nom_fichier(annee, mois)}`, ne recouvre "
+        "aucun fichier existant ; une édition précédente part dans "
+        f"`{ARCHIVES_DIR}`."
+    )
+
+if dossier_existe:
+    voisins = sorted(p.name for p in cible.glob("*.xlsx")
+                     if p.name != bordereau.nom_fichier(annee, mois))
+    if voisins:
+        st.caption(
+            f":material/folder: Déjà dans ce dossier : "
+            + " · ".join(f"`{n}`" for n in voisins[:6])
+            + (f" et {len(voisins) - 6} autre(s)" if len(voisins) > 6 else "")
+        )
 
 if generer:
     contenu = bordereau.construire(journees, annee, mois, registre=nom_registre)
@@ -290,6 +330,99 @@ if editions:
 else:
     st.caption(f"{mois_long(annee, mois).capitalize()} n'a pas encore été édité.")
 
+# --- ce qui a été transmis au comptable ---------------------------------------
+
+st.divider()
+st.subheader("Ce qui a été transmis", anchor=False)
+st.caption(
+    f"Les classeurs mensuels rangés dans `{dossier_comptable.RACINE}`, lus tels qu'ils "
+    "sont. **Ce ne sont pas le registre** : ce sont les chiffres qui sont partis "
+    "chez le comptable. L'app les lit, ne les modifie pas, et ne s'en sert "
+    "jamais comme source — le bordereau, lui, vient du registre."
+)
+
+transmis = store.transmis_par_mois(conn)
+lu_le = store.meta_get(conn, "transmis_lu_le")
+
+with st.container(horizontal=True, vertical_alignment="center"):
+    relire = st.button(
+        "Lire le dossier du comptable" if not lu_le else "Relire le dossier",
+        icon=":material/folder_open:",
+        type="primary" if not lu_le else "secondary",
+        key="relire_transmis",
+    )
+    if lu_le:
+        st.caption(
+            f"{len(transmis)} mois lus · dernier passage le "
+            f"{dt.datetime.fromisoformat(lu_le):%d/%m/%Y à %H:%M}. Seuls les "
+            "fichiers qui ont bougé sont rouverts."
+        )
+    else:
+        st.caption("Une centaine de classeurs à ouvrir : comptez une dizaine "
+                   "de secondes. Ensuite, seuls les fichiers modifiés sont relus.")
+
+# Le compte rendu est posé de côté avant le rechargement : affiché juste après
+# la lecture, `st.rerun()` l'effacerait sans qu'on ait eu le temps de le lire.
+rapport = st.session_state.pop("rapport_transmis", None)
+if rapport:
+    st.success(
+        f"{rapport['vus']} classeurs vus — {rapport['nouveaux']} nouveaux, "
+        f"{rapport['relus']} relus, {rapport['inchanges']} inchangés, "
+        f"{rapport['ignores']} sans feuille mensuelle"
+        + (f", {rapport['disparus']} disparus" if rapport["disparus"] else "")
+        + ".",
+        icon=":material/check_circle:",
+    )
+
+if relire:
+    barre = st.progress(0.0, text="Lecture du dossier…")
+    st.session_state["rapport_transmis"] = store.rafraichir_transmis(
+        conn, progress=lambda p, nom: barre.progress(min(p, 1.0), text=nom))
+    barre.empty()
+    st.rerun()
+
+fiches = store.transmis_du_mois(conn, annee, mois)
+if fiches:
+    fiche = fiches[0]
+    envoye = fiche["totaux"]
+    st.caption(
+        f"**{mois_long(annee, mois).capitalize()}** — `{fiche['chemin']}`, "
+        f"feuille « {fiche['feuille']} », {fiche['jours']} journées, modifié le "
+        f"{dt.datetime.fromisoformat(fiche['modifie_le']):%d/%m/%Y}."
+        + (f" ({len(fiches) - 1} autre(s) classeur(s) pour ce mois dans le "
+           "dossier ; c'est le plus récent qui est retenu.)"
+           if len(fiches) > 1 else "")
+    )
+
+    comparaison = [
+        ("CA à déclarer", "ca_declare", totaux["ca_declare"]),
+        ("TVA déduite", "tva_deduite", totaux["tva_deduite"]),
+        ("Patients", "patients", totaux["patients"]),
+    ]
+    colonnes = st.columns(len(comparaison))
+    for col, (libelle, cle, au_registre) in zip(colonnes, comparaison):
+        if cle not in envoye:
+            col.metric(f"{libelle} transmis", "non lu",
+                       help="Ce fichier ne porte pas cette colonne.")
+            continue
+        ecart = float(envoye[cle]) - au_registre
+        col.metric(
+            f"{libelle} transmis",
+            f"{int(envoye[cle])}" if cle == "patients"
+            else montant(float(envoye[cle])),
+            delta=(f"{ecart:+.0f}".replace(",", " ")
+                   if abs(ecart) > 0.5 else "identique au registre"),
+            delta_color="normal" if abs(ecart) > 0.5 else "off",
+            help=f"Écart avec le registre {nom_registre}, qui dit "
+                 + (f"{int(au_registre)}" if cle == "patients"
+                    else montant(au_registre)) + ".",
+        )
+else:
+    st.caption(
+        f"Aucun classeur mensuel trouvé pour {mois_long(annee, mois)}"
+        + (" — le dossier n'a pas encore été lu." if not lu_le else ".")
+    )
+
 # --- évolution ----------------------------------------------------------------
 
 edites = store.derniers_bordereaux_par_mois(conn)
@@ -307,6 +440,8 @@ df = pd.DataFrame([
         "Mois": pd.Period(r["mois"], freq="M").to_timestamp(),
         "Recettes": r["recettes"] or 0.0,
         "CA à déclarer": r["ca_declare"] or 0.0,
+        "CA transmis": transmis.get(r["mois"], {}).get("totaux", {})
+                               .get("ca_declare"),
         "Édité": r["mois"] in edites,
     }
     for r in serie
@@ -315,10 +450,13 @@ df = pd.DataFrame([
 if df.empty:
     st.stop()
 
-long = df.melt(id_vars=["Mois", "Édité"], value_vars=["Recettes", "CA à déclarer"],
-               var_name="Série", value_name="Montant")
-couleurs = alt.Scale(domain=["Recettes", "CA à déclarer"],
-                     range=["#2a78d6", "#eb6834"])
+series = ["Recettes", "CA à déclarer"]
+if df["CA transmis"].notna().any():
+    series.append("CA transmis")
+long = df.melt(id_vars=["Mois", "Édité"], value_vars=series,
+               var_name="Série", value_name="Montant").dropna(subset=["Montant"])
+couleurs = alt.Scale(domain=["Recettes", "CA à déclarer", "CA transmis"],
+                     range=["#2a78d6", "#eb6834", "#1baf7a"])
 base_graphe = alt.Chart(long).encode(
     x=alt.X("Mois:T", title=None),
     y=alt.Y("Montant:Q", title="TND"),
@@ -334,8 +472,12 @@ st.altair_chart(
 )
 st.caption(
     ":material/circle: Les points marquent les mois dont un bordereau a été "
-    f"édité — {len(edites)} mois à ce jour. La courbe, elle, vient du registre "
-    f"{nom_registre}."
+    f"édité — {len(edites)} mois à ce jour. Les deux premières courbes viennent "
+    f"du registre {nom_registre}"
+    + (f" ; « CA transmis » vient des classeurs du comptable, {len(transmis)} "
+       "mois lus." if "CA transmis" in series else
+       " ; lisez le dossier du comptable ci-dessus pour y ajouter ce qui a été "
+       "transmis.")
 )
 
 if edites:

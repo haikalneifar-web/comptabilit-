@@ -242,15 +242,49 @@ Une seule liberté prise sur le modèle : la colonne **Y — « à la charge STA
 que le classeur annonce en en-tête mais ne remplit plus depuis 2016. Le bordereau
 la remplit (`=K{ligne}`) ; aucun total n'en dépend, ni ici ni dans le classeur.
 
-**Rien ne s'écrase.** Un mois a toujours un bordereau courant, au même chemin —
-`bordereaux/<année>/bordereau-<année>-<mois>.xlsx`, c'est lui qu'on envoie.
-Rééditer le mois pousse l'ancien dans `bordereaux/archives/`, horodaté, comme les
-sauvegardes du classeur, et **ajoute une ligne au journal des éditions** : la
-page montre alors l'écart entre deux éditions du même mois, et la courbe
-d'évolution marque d'un point les mois déjà édités.
+**Il rejoint le dossier du mois.** Le cabinet range déjà ses mois dans
+`F:\comptabilité\<année>\<mois> <année>\` ; le bordereau y est déposé sous le nom
+`bordereau-<année>-<mois>-<mois>.xlsx`, qui ne ressemble à aucun de ceux qui s'y
+trouvent — **il ne recouvre jamais un fichier existant**. Les noms de dossiers
+sont irréguliers (`juin2016`, `juuillet 2014`, `ocobre 2024`, `aout` sans année) :
+l'app les reconnaît à une faute de frappe près, et ne crée un dossier que si
+aucun ne convient. Faute de dossier d'année, elle retombe sur `bordereaux/<année>/`
+dans le projet.
+
+**Rien ne s'écrase.** Un mois a toujours un bordereau courant, au même chemin,
+c'est lui qu'on envoie. Rééditer pousse l'ancien dans `bordereaux/archives/` du
+projet — les archives restent chez nous, le dossier du comptable ne garde que le
+bordereau en cours — et **ajoute une ligne au journal des éditions** : la page
+montre l'écart entre deux éditions du même mois, et la courbe d'évolution marque
+d'un point les mois déjà édités.
 
 Le classeur du cabinet n'est jamais ouvert pour ça : le bordereau se fabrique à
 partir du registre de l'app.
+
+## Ce qui a été transmis au comptable
+
+Les classeurs mensuels rangés dans `F:\comptabilité\<année>\<mois>\` sont les
+chiffres **partis chez le comptable**. Ils diffèrent du registre. L'app les lit
+pour l'historique — et seulement pour ça : elle ne les modifie pas, ne s'en sert
+jamais comme source, et le bordereau continue de sortir avec les chiffres du
+registre.
+
+Leur forme bouge d'une année à l'autre — de S à BD colonnes, les totaux glissant
+de place — mais deux repères tiennent sur les seize années : **la date est en
+colonne B**, et les totaux se retrouvent par le **texte de leur en-tête**
+(`CA A DECLARER`, `TVA DED`, `patients à DECLARER`), jamais par leur position.
+Un poste absent du fichier est rapporté « non lu », pas zéro. Les valeurs lues
+sont celles qu'Excel a mises en cache : rien n'est recalculé.
+
+Une centaine de classeurs, une dizaine de secondes — d'où un cache dans la table
+`transmis`, relu **seulement pour les fichiers qui ont bougé** (date et taille).
+Nos propres bordereaux sont exclus de cette lecture : déposés dans le même
+dossier, et enregistrés un jour depuis Excel, ils prendraient la place du fichier
+réellement transmis et on comparerait le registre à lui-même.
+
+La page montre alors, pour le mois choisi, le CA, la TVA et les patients
+transmis face à ceux du registre, et la courbe d'évolution gagne une troisième
+série.
 
 ## Ce que l'app écrit dans le classeur
 
@@ -301,6 +335,7 @@ compta/
   store.py            registre SQLite : journées, clôture, rectifications, bordereaux
   xlsx_io.py          import et écriture du classeur
   bordereau.py        le mois du registre en classeur autonome, formules comprises
+  dossier_comptable.py  où ranger un bordereau, et lecture de ce qui a été transmis
   export.py           un tableau en PDF, Excel ou CSV
 data/compta.db        registre de travail
 sauvegardes/          copies du classeur avant écriture
@@ -316,7 +351,7 @@ python tests\test_tarifs.py           # changement de prix, jusqu'à l'écriture
 python tests\test_export.py           # PDF, Excel et CSV relus et vérifiés
 python tests\test_synchronisation.py  # le classeur modifié en dehors de l'app
 python tests\test_import_tarifs.py    # actes comptés sans montant, tarifs hérités
-python tests\test_bordereau.py        # bordereau mensuel : formules, tarifs, archivage
+python tests\test_bordereau.py        # bordereau : formules, tarifs, dossier du comptable
 python tests\test_pages.py            # rendu des sept pages, sans navigateur
 ```
 

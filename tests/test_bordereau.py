@@ -346,7 +346,155 @@ verifier("décembre fait 31 journées", len(decembre) == 31, f"({len(decembre)})
 verifier("le mois de 30 jours en fait 30",
          len(store.mois_en_journees(conn, 2026, 11)) == 30)
 
-print("\n11. Le classeur du cabinet n'est jamais touché")
+print("\n11. Le dossier du comptable — noms de dossiers, lecture, rangement")
+from compta import dossier_comptable as dc  # noqa: E402
+from openpyxl import Workbook  # noqa: E402
+
+# on reconnaît le mois malgré les noms réels du dossier, fautes comprises
+for nom, attendu in [("aout 2026", 8), ("juuillet 2014", 7), ("ocobre 2024", 10),
+                     ("juin2016", 6), ("fevrier  2016", 2), ("aout", 8),
+                     ("MARS 2012", 3), ("septembre", 9), ("decembre 2013", 12)]:
+    verifier(f"« {nom} » désigne le mois {attendu}",
+             dc.mois_du_nom(nom) == attendu, f"({dc.mois_du_nom(nom)})")
+for nom in ("factures avril 2019", "STEG", "2015_03_16", "retenue",
+            "facture nov 2018", "declaration janvier 2012", "TELECOM"):
+    verifier(f"« {nom} » n'est pas un dossier de mois",
+             dc.mois_du_nom(nom) is None, f"({dc.mois_du_nom(nom)})")
+
+# une arborescence fabriquée, à l'image de la vraie
+faux = tmp / "comptabilite"
+(faux / "2026" / "aout 2026").mkdir(parents=True)
+(faux / "2026" / "juuillet 2026").mkdir(parents=True)
+(faux / "2026" / "factures mai 2026").mkdir(parents=True)
+
+
+def fabriquer_transmis(chemin, annee, mois, jours, ca_jour, patients_jour):
+    """Un classeur mensuel comme ceux du comptable : en-têtes sur trois lignes,
+    valeurs en dur (c'est ce qu'Excel met en cache), colonnes décalées."""
+    wb = Workbook()
+    ws = wb.active
+    ws["B1"] = "DATE"
+    ws["H1"] = "CA A "
+    ws["H2"] = "DECLARER"
+    ws["I1"] = "TVA DED"
+    ws["G2"] = "patients à "
+    ws["G3"] = "DECLARER"
+    for n in range(jours):
+        r = 4 + n
+        ws.cell(row=r, column=2, value=dt.datetime(annee, mois, n + 1))
+        ws.cell(row=r, column=7, value=patients_jour)
+        ws.cell(row=r, column=8, value=ca_jour)
+        ws.cell(row=r, column=9, value=round(ca_jour * 0.0566, 2))
+    wb.save(chemin)
+    wb.close()
+
+
+transmis_aout = faux / "2026" / "aout 2026" / "aout 2026.xlsx"
+fabriquer_transmis(transmis_aout, 2026, 8, 31, 500.0, 5)
+fabriquer_transmis(faux / "2026" / "juuillet 2026" / "juillet 2026.xlsx",
+                   2026, 7, 31, 400.0, 4)
+# un fichier qui n'est pas une feuille mensuelle : il doit être écarté
+wb_bruit = Workbook()
+wb_bruit.active["A1"] = "facture STEG"
+wb_bruit.save(faux / "2026" / "factures mai 2026" / "steg.xlsx")
+wb_bruit.close()
+
+verifier("le dossier d'un mois se retrouve par son nom exact",
+         dc.dossier_du_mois(2026, 8, faux) == faux / "2026" / "aout 2026",
+         f"({dc.dossier_du_mois(2026, 8, faux)})")
+verifier("et malgré une faute de frappe",
+         dc.dossier_du_mois(2026, 7, faux) == faux / "2026" / "juuillet 2026",
+         f"({dc.dossier_du_mois(2026, 7, faux)})")
+verifier("un dossier de factures n'est pas pris pour celui du mois",
+         dc.dossier_du_mois(2026, 5, faux) is None,
+         f"({dc.dossier_du_mois(2026, 5, faux)})")
+verifier("rien n'est créé sans qu'on le demande",
+         not (faux / "2026" / "mai 2026").exists())
+cree = dc.dossier_du_mois(2026, 5, faux, creer=True)
+verifier("le dossier manquant se crée au nom canonique",
+         cree == faux / "2026" / "mai 2026" and cree.is_dir(), f"({cree})")
+verifier("une année absente se crée aussi",
+         dc.dossier_du_mois(2027, 3, faux, creer=True)
+         == faux / "2027" / "mars 2027")
+
+lu = dc.lire(transmis_aout)
+verifier("un fichier transmis se lit", lu is not None)
+verifier("son mois vient de ses dates, pas de son nom",
+         lu and lu["mois"] == "2026-08", f"({lu and lu['mois']})")
+verifier("le CA à déclarer est retrouvé par son en-tête",
+         lu and abs(lu["totaux"]["ca_declare"] - 31 * 500.0) < 0.5,
+         f"({lu and lu['totaux'].get('ca_declare')})")
+verifier("les patients aussi",
+         lu and abs(lu["totaux"]["patients"] - 31 * 5) < 0.5,
+         f"({lu and lu['totaux'].get('patients')})")
+verifier("la TVA déduite aussi", lu and "tva_deduite" in lu["totaux"])
+verifier("un poste absent du fichier n'est pas inventé",
+         lu and "recettes" not in lu["totaux"], f"({lu and sorted(lu['totaux'])})")
+verifier("une facture n'est pas lue comme un mois",
+         dc.lire(faux / "2026" / "factures mai 2026" / "steg.xlsx") is None)
+
+verifier("l'inventaire ne retient que les feuilles mensuelles",
+         len(dc.inventaire(faux)) == 2, f"({len(dc.inventaire(faux))})")
+verifier("il balaie bien les trois classeurs",
+         len(dc.fichiers(faux)) == 3, f"({len(dc.fichiers(faux))})")
+verifier("un bordereau à nous se reconnaît",
+         dc.est_notre_bordereau("bordereau-2026-08-aout.xlsx")
+         and not dc.est_notre_bordereau("aout 2026.xlsx"))
+
+# le bordereau rejoint le dossier du mois sans rien recouvrir
+avant_octets = transmis_aout.read_bytes()
+chemin_b, _ = bordereau.enregistrer(contenu, 2026, 8, racine_comptable=faux)
+verifier("le bordereau se range dans le dossier du mois",
+         chemin_b.parent == faux / "2026" / "aout 2026", f"({chemin_b.parent})")
+verifier("sous un nom qui ne ressemble à aucun autre",
+         chemin_b.name == "bordereau-2026-08-aout.xlsx", f"({chemin_b.name})")
+verifier("le fichier du comptable est intact",
+         transmis_aout.read_bytes() == avant_octets)
+verifier("les deux cohabitent",
+         len(list((faux / "2026" / "aout 2026").glob("*.xlsx"))) == 2)
+verifier("mais le nôtre reste hors de la lecture des fichiers transmis",
+         chemin_b not in dc.fichiers(faux),
+         f"({[p.name for p in dc.fichiers(faux)]})")
+
+print("\n11 bis. Le cache de ce qui a été transmis")
+dc_racine = dc.RACINE
+rapport = store.rafraichir_transmis(conn, racine=faux)
+verifier("le premier passage lit tout",
+         rapport["nouveaux"] == 2 and rapport["inchanges"] == 0, str(rapport))
+verifier("les fichiers sans feuille mensuelle sont comptés à part",
+         rapport["ignores"] >= 1, str(rapport))
+par_mois = store.transmis_par_mois(conn)
+verifier("un mois est indexé par son mois", "2026-08" in par_mois,
+         f"({sorted(par_mois)})")
+verifier("ses totaux sont relus depuis le cache",
+         abs(par_mois["2026-08"]["totaux"]["ca_declare"] - 15500.0) < 0.5,
+         f"({par_mois['2026-08']['totaux'].get('ca_declare')})")
+
+rapport = store.rafraichir_transmis(conn, racine=faux)
+verifier("le second passage ne rouvre rien",
+         rapport["nouveaux"] == 0 and rapport["relus"] == 0
+         and rapport["inchanges"] == rapport["vus"], str(rapport))
+verifier("et le bordereau qu'on vient d'écrire n'est pas du lot",
+         rapport["vus"] == 3, str(rapport))
+
+fabriquer_transmis(transmis_aout, 2026, 8, 31, 600.0, 6)
+rapport = store.rafraichir_transmis(conn, racine=faux)
+verifier("un fichier modifié est relu", rapport["relus"] == 1, str(rapport))
+verifier("et ses nouveaux totaux prennent la place",
+         abs(store.transmis_par_mois(conn)["2026-08"]["totaux"]["ca_declare"]
+             - 18600.0) < 0.5)
+
+transmis_aout.unlink()
+rapport = store.rafraichir_transmis(conn, racine=faux)
+verifier("un fichier disparu quitte le cache", rapport["disparus"] == 1,
+         str(rapport))
+verifier("son mois n'est plus au tableau",
+         "2026-08" not in store.transmis_par_mois(conn),
+         f"({sorted(store.transmis_par_mois(conn))})")
+verifier("le dossier réel du comptable n'a pas bougé de place",
+         dc.RACINE == dc_racine, f"({dc.RACINE})")
+
+print("\n12. Le classeur du cabinet n'est jamais touché")
 source = (PROJET / "compta" / "bordereau.py").read_text(encoding="utf-8")
 verifier("le module ne connaît pas le chemin du classeur",
          "XLSX_PATH" not in source)

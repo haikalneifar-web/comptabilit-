@@ -567,14 +567,37 @@ at = lancer("app_pages/tarifs.py")
 verifier("aucune exception", not at.exception, str(at.exception))
 
 print("\n11. Bordereaux — un mois, son classeur, son historique")
-# les fichiers produits vont dans un dossier de test : la page range d'habitude
-# dans le projet, et un test ne salit pas le dossier de travail
+# La page range le bordereau dans le dossier du comptable et lit ce qui s'y
+# trouve. Un test ne touche ni à `F:\comptabilité` ni au dossier de travail :
+# on déplace les deux racines dans du temporaire.
 from compta import bordereau as _bordereau  # noqa: E402
+from compta import dossier_comptable as _dc  # noqa: E402
 import compta.config as _config  # noqa: E402
+from openpyxl import Workbook as _Workbook  # noqa: E402
 
-dossier_test = Path(tempfile.mkdtemp()) / "bordereaux"
+racine_test = Path(tempfile.mkdtemp())
+dossier_test = racine_test / "bordereaux"
+_dc.RACINE = racine_test / "comptabilite"
 _bordereau.BORDEREAUX_DIR = dossier_test
+_bordereau.ARCHIVES_DIR = racine_test / "archives"
 _config.BORDEREAUX_DIR = dossier_test
+
+
+def transmis_bidon(chemin, annee, mois, jours, ca_jour, patients_jour):
+    """Un classeur mensuel du comptable, en-têtes sur trois lignes et valeurs
+    en dur — comme ceux qu'Excel enregistre."""
+    chemin.parent.mkdir(parents=True, exist_ok=True)
+    wb = _Workbook()
+    ws = wb.active
+    ws["B1"], ws["H1"], ws["H2"] = "DATE", "CA A ", "DECLARER"
+    ws["G2"], ws["G3"] = "patients à ", "DECLARER"
+    for n in range(jours):
+        r = 4 + n
+        ws.cell(row=r, column=2, value=dt.datetime(annee, mois, n + 1))
+        ws.cell(row=r, column=7, value=patients_jour)
+        ws.cell(row=r, column=8, value=ca_jour)
+    wb.save(chemin)
+    wb.close()
 
 # un mois qui porte des chiffres, pour que le bouton ne soit pas désactivé
 conn = store.connect()
@@ -585,9 +608,62 @@ mois_plein = conn.execute(
 conn.close()
 annee_test, mois_test = int(mois_plein[:4]), int(mois_plein[5:7])
 
+# sans mois choisi, la page s'ouvre sur le dernier mois qui porte des chiffres —
+# pas sur le mois à saisir, qui n'offrirait qu'un bouton grisé
+at = lancer("app_pages/bordereaux.py")
+conn = store.connect()
+dernier_rempli = store.dernier_jour_rempli(conn)
+conn.close()
+verifier("sans mois choisi, elle s'ouvre sur le dernier mois renseigné",
+         at.session_state["mois_travail"]
+         == (dernier_rempli.year, dernier_rempli.month),
+         f"({at.session_state['mois_travail']} au lieu de "
+         f"{(dernier_rempli.year, dernier_rempli.month)})")
+verifier("et le bouton y est donc actif",
+         (b := next((b for b in at.button if "Générer" in b.label), None))
+         is not None and not b.disabled)
+
 at = lancer("app_pages/bordereaux.py",
             {"mois_travail": (annee_test, mois_test)})
+verifier("un mois choisi ailleurs est respecté",
+         at.session_state["mois_travail"] == (annee_test, mois_test),
+         f"({at.session_state['mois_travail']})")
 verifier("aucune exception", not at.exception, str(at.exception))
+
+# Arriver sur un mois vide ne doit pas être un cul-de-sac : c'est ce que fait
+# l'accueil, qui ouvre sur le mois **à saisir**. On prend un mois franchement
+# vide plutôt que `mois_a_saisir`, que les sections précédentes ont pu remplir.
+conn = store.connect()
+dernier_rempli = store.dernier_jour_rempli(conn)
+mois_vide = (dernier_rempli.year + 1, dernier_rempli.month)
+reste_vide = conn.execute(
+    "SELECT COUNT(*) n FROM jours WHERE substr(date,1,7)=? AND recettes>0",
+    (f"{mois_vide[0]:04d}-{mois_vide[1]:02d}",),
+).fetchone()["n"]
+conn.close()
+verifier("le mois témoin est bien sans chiffres", reste_vide == 0,
+         f"({reste_vide} journée(s) renseignée(s))")
+
+at_vide = lancer("app_pages/bordereaux.py", {"mois_travail": mois_vide})
+verifier("un mois vide le dit",
+         any("aucun chiffre" in w.value for w in at_vide.warning),
+         str(at_vide.warning))
+verifier("le bouton de génération y est grisé",
+         (b := next((b for b in at_vide.button if "Générer" in b.label), None))
+         is not None and b.disabled)
+retour = next((b for b in at_vide.button
+               if "dernier mois renseigné" in b.label), None)
+verifier("et le dernier mois renseigné est à un clic", retour is not None,
+         f"({[b.label for b in at_vide.button]})")
+if retour is not None:
+    at_vide = retour.click().run()
+    verifier("le clic y mène",
+             at_vide.session_state["mois_travail"]
+             == (dernier_rempli.year, dernier_rempli.month),
+             f"({at_vide.session_state['mois_travail']})")
+    verifier("et le bouton de génération y redevient actif",
+             (b := next((b for b in at_vide.button if "Générer" in b.label),
+                        None)) is not None and not b.disabled)
 verifier("la page annonce les bordereaux",
          any("Bordereaux" in h.value for h in at.header))
 verifier("le mois affiché est celui demandé",
@@ -624,9 +700,12 @@ at = bouton.click().run()
 verifier("générer ne lève rien", not at.exception, str(at.exception))
 verifier("le fichier est annoncé enregistré",
          any("enregistré" in s.value for s in at.success), str(at.success))
-produit = dossier_test / str(annee_test) / _bordereau.nom_fichier(annee_test, mois_test)
-verifier("le fichier est bien sur le disque",
+attendu_dossier = (_dc.RACINE / str(annee_test)
+                   / _dc.nom_dossier(annee_test, mois_test))
+produit = attendu_dossier / _bordereau.nom_fichier(annee_test, mois_test)
+verifier("le bordereau est rangé dans le dossier du mois, chez le comptable",
          produit.exists() and produit.stat().st_size > 0, f"({produit})")
+verifier("le dossier du mois a été créé au besoin", attendu_dossier.is_dir())
 verifier("il se télécharge depuis la page",
          any("Télécharger" in d.label for d in at.download_button))
 
@@ -647,11 +726,52 @@ historique = table(at, "Édité le", "Recettes", "Δ recettes")
 verifier("la réédition s'ajoute à l'historique",
          historique is not None and len(historique) == 2,
          f"({None if historique is None else len(historique)} ligne(s))")
-verifier("l'édition précédente est archivée",
-         (dossier_test / "archives").exists()
-         and any((dossier_test / "archives").glob("*.xlsx")))
+verifier("l'édition précédente est archivée dans le projet, pas chez le comptable",
+         _bordereau.ARCHIVES_DIR.exists()
+         and any(_bordereau.ARCHIVES_DIR.glob("*.xlsx")))
+verifier("le dossier du comptable ne garde qu'un bordereau",
+         len(list(attendu_dossier.glob("bordereau-*.xlsx"))) == 1,
+         f"({[p.name for p in attendu_dossier.glob('bordereau-*.xlsx')]})")
 verifier("la page signale l'édition précédente",
          any("déjà été édité" in i.value for i in at.info), str(at.info))
+
+print("\n11 bis. Bordereaux — ce qui a été transmis au comptable")
+# un fichier transmis pour le mois de test, avec un CA volontairement plus bas
+transmis_bidon(attendu_dossier / f"{mois_test:02d}-{annee_test} transmis.xlsx",
+               annee_test, mois_test, 28, 100.0, 3)
+at = lancer("app_pages/bordereaux.py", {"mois_travail": (annee_test, mois_test)})
+verifier("aucune exception", not at.exception, str(at.exception))
+verifier("la page dit que ce ne sont pas le registre",
+         any("pas le registre" in c.value for c in at.caption), "(avertissement absent)")
+lire_dossier = next((b for b in at.button
+                     if "dossier du comptable" in b.label), None)
+verifier("le dossier du comptable se lit depuis la page",
+         lire_dossier is not None, f"({[b.label for b in at.button]})")
+
+at = lire_dossier.click().run()
+verifier("la lecture ne lève rien", not at.exception, str(at.exception))
+verifier("elle rend compte de ce qu'elle a vu",
+         any("classeurs vus" in s.value for s in at.success), str(at.success))
+
+conn = store.connect()
+par_mois = store.transmis_par_mois(conn)
+conn.close()
+cle_test = f"{annee_test}-{mois_test:02d}"
+verifier("le mois transmis est au cache", cle_test in par_mois,
+         f"({sorted(par_mois)})")
+verifier("son CA est celui du fichier, pas celui du registre",
+         cle_test in par_mois
+         and abs(par_mois[cle_test]["totaux"]["ca_declare"] - 2800.0) < 0.5,
+         f"({par_mois.get(cle_test, {}).get('totaux')})")
+verifier("notre propre bordereau n'a pas été pris pour un fichier transmis",
+         all("bordereau-" not in f["chemin"] for f in par_mois.values()),
+         f"({[f['chemin'] for f in par_mois.values()]})")
+verifier("la comparaison s'affiche",
+         metrique(at, "CA à déclarer transmis") is not None,
+         f"({[m.label for m in at.metric]})")
+verifier("elle montre le chiffre du fichier",
+         (m := metrique(at, "CA à déclarer transmis")) is not None
+         and "2 800" in m.value, f"({m.value if m else None})")
 
 print(f"\n{'=' * 50}\n{ok} réussis, {ko} échecs\n{'=' * 50}")
 sys.exit(1 if ko else 0)

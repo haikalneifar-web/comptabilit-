@@ -35,7 +35,8 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import quote_sheetname
 from openpyxl.worksheet.properties import PageSetupProperties
 
-from .config import BORDEREAUX_DIR, JOURS_FR, MOIS_FR, SAISIE_COLS
+from .config import (ARCHIVES_DIR, BORDEREAUX_DIR, JOURS_FR, MOIS_FR,
+                     SAISIE_COLS)
 from .model import Journee, LIBELLES_TARIFS, mois_long
 
 # le classeur réserve trois lignes d'en-tête ; les journées commencent en 4
@@ -400,24 +401,51 @@ def empreinte(contenu: bytes) -> str:
 
 # --- enregistrement sur le disque --------------------------------------------
 
+def destination(annee: int, mois: int, racine: Path | None = None,
+                creer: bool = False) -> Path:
+    """Où va le bordereau d'un mois : le dossier du comptable, s'il existe.
+
+    Le cabinet range déjà ses mois dans `F:\\comptabilité\\<année>\\<mois>\\` — le
+    bordereau y rejoint le reste du mois plutôt que de vivre à part. À défaut de
+    dossier d'année (un mois à venir, un disque absent), on retombe sur
+    `bordereaux/<année>/` dans le projet, et rien n'est perdu.
+    """
+    from . import dossier_comptable
+
+    trouve = dossier_comptable.dossier_du_mois(annee, mois, racine, creer=creer)
+    if trouve is not None:
+        return trouve
+    return (Path(racine) if racine else BORDEREAUX_DIR) / str(annee)
+
+
 def enregistrer(contenu: bytes, annee: int, mois: int,
-                dossier: Path | None = None) -> tuple[Path, Path | None]:
+                dossier: Path | None = None,
+                racine_comptable: Path | None = None) -> tuple[Path, Path | None]:
     """Pose le bordereau du mois à son adresse, l'édition précédente à l'abri.
+
+    Sans `dossier`, il va dans le dossier du mois chez le comptable — créé s'il
+    le faut. Son nom, `bordereau-2026-08-aout.xlsx`, ne ressemble à aucun de
+    ceux qui s'y trouvent : **il ne recouvre jamais un fichier existant**.
 
     Un mois a toujours **un** bordereau courant, au même chemin — c'est lui
     qu'on envoie. Rééditer ne l'écrase pas en silence : l'ancien part dans
-    `bordereaux/archives/`, horodaté, comme les sauvegardes du classeur.
+    `bordereaux/archives/` du projet, horodaté, comme les sauvegardes du
+    classeur. Les archives restent chez nous : le dossier du comptable garde
+    le seul bordereau en cours.
 
     Retourne le chemin écrit et celui de l'archive, s'il y en a eu une.
     """
-    racine = Path(dossier) if dossier else BORDEREAUX_DIR
-    annuel = racine / str(annee)
-    annuel.mkdir(parents=True, exist_ok=True)
-    chemin = annuel / nom_fichier(annee, mois)
+    if dossier is not None:
+        cible = Path(dossier) / str(annee)
+    else:
+        cible = destination(annee, mois, racine_comptable, creer=True)
+    cible.mkdir(parents=True, exist_ok=True)
+    chemin = cible / nom_fichier(annee, mois)
 
     archive = None
     if chemin.exists():
-        archives = racine / "archives"
+        archives = (Path(dossier) / "archives" if dossier is not None
+                    else ARCHIVES_DIR)
         archives.mkdir(parents=True, exist_ok=True)
         horodatage = dt.datetime.fromtimestamp(chemin.stat().st_mtime)
         archive = archives / f"{chemin.stem}_{horodatage:%Y%m%d_%H%M%S}.xlsx"

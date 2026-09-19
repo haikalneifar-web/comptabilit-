@@ -113,6 +113,22 @@ def init_db(conn: sqlite3.Connection) -> None:
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_bordereaux_mois ON bordereaux(mois)")
+    # Cache de ce qui a été transmis au comptable : un fichier mensuel par ligne,
+    # relu seulement s'il a bougé. Ce n'est pas une source — le registre reste le
+    # registre — c'est l'observation de fichiers extérieurs, qu'on ne modifie pas.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS transmis (
+            chemin TEXT PRIMARY KEY,
+            mois TEXT,
+            feuille TEXT,
+            jours INTEGER,
+            modifie_le TEXT NOT NULL,
+            taille INTEGER NOT NULL,
+            totaux TEXT NOT NULL,
+            lu_le TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_transmis_mois ON transmis(mois)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_actes_date ON actes(date)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jours_export ON jours(a_exporter)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_rectif_date ON rectifications(date, champ)")
@@ -736,6 +752,104 @@ def derniers_bordereaux_par_mois(conn) -> dict[str, dict]:
         ) WHERE rang = 1 ORDER BY mois
     """).fetchall()
     return {r["mois"]: _vers_bordereau(r) for r in lignes}
+
+
+# --- ce qui a été transmis au comptable --------------------------------------
+
+def rafraichir_transmis(conn, racine=None, annees: list[int] | None = None,
+                        progress=None) -> dict:
+    """Relit le dossier du comptable et met le cache à jour.
+
+    Un classeur n'est rouvert que si sa date ou sa taille a changé : la centaine
+    de fichiers ne se relit entièrement qu'une fois. Les lignes dont le fichier
+    a disparu s'en vont.
+    """
+    from . import dossier_comptable
+
+    connus = {
+        r["chemin"]: (r["modifie_le"], r["taille"])
+        for r in conn.execute("SELECT chemin, modifie_le, taille FROM transmis")
+    }
+    presents = dossier_comptable.fichiers(racine, annees)
+    rapport = {"vus": len(presents), "inchanges": 0, "relus": 0,
+               "nouveaux": 0, "ignores": 0, "disparus": 0}
+
+    for i, chemin in enumerate(presents):
+        if progress:
+            progress((i + 1) / max(len(presents), 1), chemin.name)
+        etat = chemin.stat()
+        signature = (dt.datetime.fromtimestamp(etat.st_mtime)
+                     .isoformat(timespec="seconds"), etat.st_size)
+        if connus.get(str(chemin)) == signature:
+            rapport["inchanges"] += 1
+            continue
+
+        fiche = dossier_comptable.lire(chemin)
+        if fiche is None:
+            # pas une feuille mensuelle : on retient qu'on l'a regardée, pour ne
+            # pas la rouvrir à chaque passage
+            conn.execute(
+                "INSERT INTO transmis(chemin, mois, feuille, jours, modifie_le, "
+                "taille, totaux) VALUES(?,NULL,NULL,0,?,?,'{}') "
+                "ON CONFLICT(chemin) DO UPDATE SET mois=NULL, jours=0, "
+                "modifie_le=excluded.modifie_le, taille=excluded.taille, "
+                "totaux='{}', lu_le=datetime('now')",
+                (str(chemin), signature[0], signature[1]),
+            )
+            rapport["ignores"] += 1
+            continue
+
+        rapport["nouveaux" if str(chemin) not in connus else "relus"] += 1
+        conn.execute(
+            "INSERT INTO transmis(chemin, mois, feuille, jours, modifie_le, "
+            "taille, totaux, lu_le) VALUES(?,?,?,?,?,?,?,datetime('now')) "
+            "ON CONFLICT(chemin) DO UPDATE SET mois=excluded.mois, "
+            "feuille=excluded.feuille, jours=excluded.jours, "
+            "modifie_le=excluded.modifie_le, taille=excluded.taille, "
+            "totaux=excluded.totaux, lu_le=datetime('now')",
+            (str(chemin), fiche["mois"], fiche["feuille"], fiche["jours"],
+             fiche["modifie_le"], fiche["taille"], json.dumps(fiche["totaux"])),
+        )
+
+    vivants = {str(p) for p in presents}
+    partis = [c for c in connus if c not in vivants]
+    for chemin in partis:
+        conn.execute("DELETE FROM transmis WHERE chemin=?", (chemin,))
+    rapport["disparus"] = len(partis)
+
+    conn.commit()
+    meta_set(conn, "transmis_lu_le",
+             dt.datetime.now().isoformat(timespec="seconds"))
+    return rapport
+
+
+def transmis_par_mois(conn) -> dict[str, dict]:
+    """Le fichier retenu pour chaque mois : le plus récemment modifié.
+
+    Un mois porte parfois plusieurs classeurs — une copie, un brouillon, une
+    version rangée dans un sous-dossier. Le dernier modifié est celui qui a été
+    transmis.
+    """
+    lignes = conn.execute("""
+        SELECT * FROM (
+            SELECT *, ROW_NUMBER() OVER (
+                PARTITION BY mois ORDER BY modifie_le DESC, chemin DESC) rang
+            FROM transmis WHERE mois IS NOT NULL
+        ) WHERE rang = 1 ORDER BY mois
+    """).fetchall()
+    return {r["mois"]: dict(r) | {"totaux": json.loads(r["totaux"])}
+            for r in lignes}
+
+
+def transmis_du_mois(conn, annee: int, mois: int) -> list[dict]:
+    """Tous les classeurs trouvés pour un mois, le plus récent d'abord."""
+    return [
+        dict(r) | {"totaux": json.loads(r["totaux"])}
+        for r in conn.execute(
+            "SELECT * FROM transmis WHERE mois=? ORDER BY modifie_le DESC",
+            (f"{annee}-{mois:02d}",),
+        )
+    ]
 
 
 def bornes(conn) -> tuple[dt.date | None, dt.date | None]:
