@@ -52,6 +52,10 @@ else:
     pages = [
         st.Page("app_pages/journal.py", title=titre_mois,
                 icon=":material/calendar_month:", default=True),
+        # juste après la saisie : ce que les formules en tirent, que l'écran de
+        # saisie ne montre plus
+        st.Page("app_pages/totaux.py", title="Totaux du mois",
+                icon=":material/functions:"),
         st.Page("app_pages/saisie.py", title="Saisie du jour",
                 icon=":material/add_circle:"),
         st.Page("app_pages/bordereaux.py", title="Bordereaux",

@@ -98,14 +98,16 @@ else:
     verifier("le mois non saisi est signalé",
              any("n'est pas encore saisi" in w.value for w in at.warning))
 verifier("toutes les journées du mois sont affichées",
-         len(at.dataframe[1].value) == calendar.monthrange(*attendu_mois)[1],
-         f"({len(at.dataframe[1].value)} pour {attendu_mois})")
+         len(at.dataframe[0].value) == calendar.monthrange(*attendu_mois)[1],
+         f"({len(at.dataframe[0].value)} pour {attendu_mois})")
+verifier("la page d'accueil ne porte que la grille de saisie",
+         len(at.dataframe) == 1, f"({len(at.dataframe)} tableaux)")
 
 print("\n0 bis. Un mois au-delà de la dernière ligne du classeur")
 at = lancer(etat={"mois_travail": (2027, 3)})
 verifier("aucune exception", not at.exception, str(at.exception))
-verifier("mars 2027 s'affiche entièrement", len(at.dataframe[1].value) == 31,
-         f"({len(at.dataframe[1].value)})")
+verifier("mars 2027 s'affiche entièrement", len(at.dataframe[0].value) == 31,
+         f"({len(at.dataframe[0].value)})")
 verifier("les journées absentes du registre sont signalées",
          any("absente(s) du registre" in c.value for c in at.caption),
          str([c.value for c in at.caption]))
@@ -113,13 +115,22 @@ verifier("les journées absentes du registre sont signalées",
 print("\n0 quater. Un outil d'export sous chaque tableau")
 at = lancer(etat={"mois_travail": (2026, 7)})
 boutons = at.get("download_button")
-verifier("trois formats sous chacun des deux tableaux",
-         [b.label for b in boutons] == ["PDF", "Excel", "CSV"] * 2,
+verifier("trois formats sous la grille de saisie",
+         [b.label for b in boutons] == ["PDF", "Excel", "CSV"],
          f"({[b.label for b in boutons]})")
-verifier("chaque bouton est rattaché au mois affiché",
+verifier("les boutons sont rattachés au mois affiché",
          all("2026_7" in b.key for b in boutons), f"({[b.key for b in boutons]})")
-verifier("les deux tableaux exportent séparément",
-         {b.key.split("_")[1] for b in boutons} == {"saisie", "calcul"},
+verifier("c'est bien l'export de la saisie",
+         {b.key.split("_")[1] for b in boutons} == {"saisie"},
+         f"({[b.key for b in boutons]})")
+
+at = lancer("app_pages/totaux.py", {"mois_travail": (2026, 7)})
+boutons = at.get("download_button")
+verifier("trois formats sous le tableau des totaux",
+         [b.label for b in boutons] == ["PDF", "Excel", "CSV"],
+         f"({[b.label for b in boutons]})")
+verifier("c'est bien l'export des colonnes calculées",
+         {b.key.split("_")[1] for b in boutons} == {"calcul"},
          f"({[b.key for b in boutons]})")
 
 at = lancer("app_pages/rectifications.py", {"mois_travail": (2026, 7)})
@@ -187,28 +198,33 @@ verifier("recettes du bandeau = registre corrigé",
          at.metric[0].value == f"{corrige.recettes:,.0f}".replace(",", " ") + " TND",
          f"({at.metric[0].value})")
 
-print("\n4. Mois comptable — tableau du mois et colonnes calculées")
+print("\n4. Mois comptable — la grille de saisie, et rien d'autre")
 at = lancer("app_pages/journal.py", {"mois_travail": (2026, 7)})
 verifier("aucune exception", not at.exception, str(at.exception))
 verifier("mention des journées rectifiées",
          any("rectifiée" in c.value for c in at.caption))
-verifier("tableau des colonnes calculées affiché", len(at.dataframe) >= 1)
 verifier("aucune modification en attente au chargement",
          any("Aucune." in c.value for c in at.caption))
 
-verifier("deux tableaux côte à côte : saisie et calculé", len(at.dataframe) == 2,
+verifier("un seul tableau : la grille de saisie", len(at.dataframe) == 1,
          f"({len(at.dataframe)})")
-saisie_df, calcul = at.dataframe[0].value, at.dataframe[1].value
+saisie_df = at.dataframe[0].value
+verifier("la grille porte les colonnes de saisie",
+         "pay_n" in saisie_df.columns and "divers" in saisie_df.columns)
+verifier("aucune colonne calculée ne s'y est glissée",
+         not ({"Recettes", "CA déclaré", "Caisse", "Dû CNAM"}
+              & set(saisie_df.columns)), f"({list(saisie_df.columns)})")
+verifier("la page renvoie vers les totaux",
+         any("formules en tirent" in p.label for p in at.get("page_link")),
+         f"({[p.label for p in at.get('page_link')]})")
 
 # --- mise en page ------------------------------------------------------------
 # Les en-têtes étaient rognés — « Rembo », « Catarac », « Laser d » — parce que
 # douze colonnes se partageaient la largeur automatiquement. Les largeurs sont
-# désormais posées en pixels, et ce test vérifie qu'elles tiennent dans la part
-# d'écran de leur colonne. Ajouter une colonne sans rééquilibrer le fera échouer.
+# désormais posées en pixels, et ce test vérifie qu'elles tiennent dans la page.
+# Ajouter une colonne sans rééquilibrer le fera échouer.
 import json as _json_mep  # noqa: E402
 
-# La grille tient toute la page ; le tableau replié perd la marge de son volet.
-PART = {0: 1.0, 1: 0.94}
 LARGEUR_PAGE = 1324               # fenêtre de l'app, marges déduites
 
 
@@ -218,15 +234,18 @@ def largeurs(tableau):
             if isinstance(r, dict) and r.get("width")}
 
 
-bandeau = [m.label for m in at.metric]
-verifier("un bandeau de six totaux, sous le tableau de saisie",
-         bandeau == ["Patients", "Chirurgie", "Recettes", "CA déclaré",
-                     "Caisse", "Dû CNAM"], f"({bandeau})")
-
-# L'écran de saisie ne porte qu'une chose : la grille du mois. Les tuiles de
-# totaux viennent SOUS elle, et les colonnes calculées sont dans un volet replié.
-# L'ordre d'affichage se lit dans l'arbre de rendu, seul endroit où il existe —
-# `at.dataframe` et `at.metric` les rendent à plat, sans dire lequel vient avant.
+def tient_dans_la_page(at_page, nom, marge=1.0):
+    for rang_tab, tableau in enumerate(at_page.dataframe):
+        posees = largeurs(tableau)
+        affichees = set(tableau.value.columns) | {"Date"}
+        manquantes = affichees - set(posees)
+        verifier(f"{nom} : chaque colonne affichée a une largeur posée",
+                 not manquantes, f"(sans largeur : {sorted(manquantes)})")
+        demande = sum(posees[c] for c in affichees if c in posees)
+        verifier(f"{nom} : ses colonnes tiennent dans la largeur de page",
+                 demande <= LARGEUR_PAGE * marge,
+                 f"({demande} px demandés pour "
+                 f"{LARGEUR_PAGE * marge:.0f} disponibles)")
 
 
 def parcours(bloc, volet=None):
@@ -239,49 +258,57 @@ def parcours(bloc, volet=None):
         except Exception:                      # noqa: BLE001 — sans libellé
             etiquette = None
         trouves.append((genre, etiquette, volet))
-        # un volet dépliable se présente comme un « status » dans l'arbre
         trouves += parcours(enfant, etiquette if genre == "status" else volet)
     return trouves
 
 
+bandeau = [m.label for m in at.metric]
+verifier("un bandeau de six totaux, sous le tableau de saisie",
+         bandeau == ["Patients", "Chirurgie", "Recettes", "CA déclaré",
+                     "Caisse", "Dû CNAM"], f"({bandeau})")
+
+# L'ordre d'affichage se lit dans l'arbre de rendu, seul endroit où il existe :
+# `at.dataframe` et `at.metric` rendent les éléments à plat, sans dire lequel
+# vient avant. C'est la demande — les tuiles SOUS le tableau — qu'on vérifie ici.
 arbre = parcours(at.main)
-rang = lambda test: next((i for i, n in enumerate(arbre) if test(n)), None)  # noqa: E731
-
-i_grille = rang(lambda n: n[0] == "dataframe" and n[2] is None)
-i_tuiles = rang(lambda n: n[0] == "metric")
-i_calcul = rang(lambda n: n[0] == "dataframe" and n[2] is not None)
-
-verifier("la grille de saisie n'est dans aucun volet", i_grille is not None)
+position = lambda test: next((i for i, n in enumerate(arbre) if test(n)), None)  # noqa: E731
+i_grille = position(lambda n: n[0] == "dataframe")
+i_tuiles = position(lambda n: n[0] == "metric")
 verifier("les tuiles de totaux viennent sous le tableau",
          i_grille is not None and i_tuiles is not None and i_grille < i_tuiles,
          f"(grille en {i_grille}, tuiles en {i_tuiles})")
-verifier("les colonnes calculées sont dans un volet, pas à côté de la saisie",
-         i_calcul is not None
-         and "formules en tirent" in str(arbre[i_calcul][2]),
-         f"({arbre[i_calcul][2] if i_calcul is not None else 'absent'})")
-verifier("et le volet vient après les tuiles",
-         i_calcul is not None and i_tuiles is not None and i_tuiles < i_calcul,
-         f"(tuiles en {i_tuiles}, volet en {i_calcul})")
 
-for rang, tableau in enumerate(at.dataframe):
-    posees = largeurs(tableau)
-    affichees = set(tableau.value.columns) | {"Date"}
-    manquantes = affichees - set(posees)
-    verifier(f"tableau {rang} : chaque colonne affichée a une largeur posée",
-             not manquantes, f"(sans largeur : {sorted(manquantes)})")
-    budget = LARGEUR_PAGE * PART[rang]
-    demande = sum(posees[c] for c in affichees if c in posees)
-    verifier(f"tableau {rang} : ses colonnes tiennent dans la largeur de page",
-             demande <= budget,
-             f"({demande} px demandés pour {budget:.0f} disponibles)")
-
-etiquettes = [r.get("label") for r
-              in _json_mep.loads(at.dataframe[0].proto.columns or "{}").values()
-              if isinstance(r, dict) and r.get("label")]
+tient_dans_la_page(at, "grille de saisie")
+etiquettes = [
+    r.get("label") for r
+    in _json_mep.loads(at.dataframe[0].proto.columns or "{}").values()
+    if isinstance(r, dict) and r.get("label")
+]
 verifier("les libellés de la grille tiennent dans leur colonne",
          all(len(str(e)) <= 12 for e in etiquettes), str(etiquettes))
-verifier("le tableau de gauche porte les colonnes de saisie",
-         "pay_n" in saisie_df.columns and "divers" in saisie_df.columns)
+
+at.segmented_control(key="registre_journal").select("Réel").run()
+verifier("bascule vers le réel sans exception", not at.exception, str(at.exception))
+verifier("valeurs d'origine annoncées",
+         any("avant rectification" in c.value for c in at.caption))
+verifier("registre réel non éditable",
+         any("ne s'éditent pas" in i.value for i in at.info))
+
+print("\n4 bis. Totaux du mois — les colonnes calculées, sur leur page")
+at = lancer("app_pages/totaux.py", {"mois_travail": (2026, 7)})
+verifier("aucune exception", not at.exception, str(at.exception))
+verifier("la page porte son titre",
+         any("Totaux du mois" in h.value for h in at.header))
+verifier("un seul tableau : les colonnes calculées", len(at.dataframe) == 1,
+         f"({len(at.dataframe)})")
+calcul = at.dataframe[0].value
+verifier("elle dit que rien ne s'y saisit",
+         any("Rien ne se saisit" in c.value for c in at.caption))
+verifier("elle renvoie vers la saisie",
+         any("Retour à la saisie" in p.label for p in at.get("page_link")),
+         f"({[p.label for p in at.get('page_link')]})")
+tient_dans_la_page(at, "tableau des totaux")
+
 conn = store.connect()
 attendu = {d: store.lire_jour_corrige(conn, d)
            for d in store.jours_ouverts(conn, dt.date(2026, 7, 1), dt.date(2026, 7, 31))}
@@ -295,6 +322,9 @@ verifier("recettes calculées = registre corrigé",
          f"({calcul.loc[D, 'Recettes']} vs {jour_corrige.recettes})")
 verifier("patients calculés = registre corrigé",
          int(calcul.loc[D, "Patients"]) == jour_corrige.patients)
+verifier("les six colonnes calculées sont là",
+         {"État", "Patients", "Recettes", "CA déclaré", "Caisse", "Dû CNAM",
+          "Δ en attente"} == set(calcul.columns), f"({list(calcul.columns)})")
 verifier("aucun écart en attente au chargement",
          all(abs(float(v)) < 0.01 for v in calcul["Δ en attente"]))
 verifier("la journée rectifiée est signalée comme telle",
@@ -302,14 +332,14 @@ verifier("la journée rectifiée est signalée comme telle",
 verifier("les emplacements vides sont ouverts",
          all(calcul.loc[d, "État"] == "Ouverte" for d in ouvertes))
 verifier("la journée rectifiée n'est pas un emplacement ouvert", D not in ouvertes)
+verifier("le bandeau de totaux y figure aussi",
+         [m.label for m in at.metric] == ["Patients", "Chirurgie", "Recettes",
+                                          "CA déclaré", "Caisse", "Dû CNAM"],
+         f"({[m.label for m in at.metric]})")
 
-at.segmented_control(key="registre_journal").select("Réel").run()
+at.segmented_control(key="registre_totaux").select("Réel").run()
 verifier("bascule vers le réel sans exception", not at.exception, str(at.exception))
-verifier("valeurs d'origine annoncées",
-         any("avant rectification" in c.value for c in at.caption))
-verifier("registre réel non éditable",
-         any("ne s'éditent pas" in i.value for i in at.info))
-calcul_reel = at.dataframe[1].value
+calcul_reel = at.dataframe[0].value
 verifier("le réel diffère du corrigé sur la journée rectifiée",
          abs(float(calcul_reel.loc[D, "Recettes"])
              - float(calcul.loc[D, "Recettes"])) > 0.01)
@@ -328,14 +358,20 @@ attendu_juin = store.lire_jour(conn, dt.date(2027, 6, 3))
 conn.close()
 at = lancer("app_pages/journal.py", {"mois_travail": (2027, 6)})
 verifier("aucune exception", not at.exception, str(at.exception))
-calcul = at.dataframe[1].value
+verifier("la grille porte les 30 journées de juin", len(at.dataframe[0].value) == 30,
+         f"({len(at.dataframe[0].value)})")
+verifier("aucun motif demandé sans modification",
+         not any("Motif des rectifications" in t.label for t in at.text_area))
+
+at = lancer("app_pages/totaux.py", {"mois_travail": (2027, 6)})
+verifier("les totaux de ce mois s'affichent aussi", not at.exception,
+         str(at.exception))
+calcul = at.dataframe[0].value
 verifier("la journée saisie est ouverte",
          calcul.loc[dt.date(2027, 6, 3), "État"] == "Ouverte")
 verifier("ses recettes sont calculées",
          abs(float(calcul.loc[dt.date(2027, 6, 3), "Recettes"])
              - attendu_juin.recettes) < 0.01)
-verifier("aucun motif demandé sans modification",
-         not any("Motif des rectifications" in t.label for t in at.text_area))
 
 print("\n5 bis. Mois comptable — modifier une cellule, puis enregistrer")
 # AppTest ne clique pas dans une grille : on injecte l'état du widget, ce que
@@ -354,16 +390,33 @@ at = lancer("app_pages/journal.py", {
              "added_rows": [], "deleted_rows": []},
 })
 verifier("aucune exception", not at.exception, str(at.exception))
-calcul = at.dataframe[1].value
+attendu_ecart = 5 * avant.tarifs["t_pay"]
+tuile = metrique(at, "Recettes")
+verifier("la tuile des recettes chiffre la modification en attente",
+         tuile is not None and tuile.delta
+         and tuile.delta.replace(" ", "").startswith(f"+{attendu_ecart:.0f}"),
+         f"({tuile.delta if tuile else None})")
+
+# la saisie en attente vit dans l'état de session : elle suit sur l'autre page
+at_totaux = at.switch_page("app_pages/totaux.py").run()
+verifier("la page des totaux reprend la saisie en attente",
+         not at_totaux.exception, str(at_totaux.exception))
+calcul = at_totaux.dataframe[0].value
 verifier("la colonne calculée suit la modification",
-         abs(float(calcul.loc[D, "Δ en attente"]) - 5 * avant.tarifs["t_pay"]) < 0.01,
+         abs(float(calcul.loc[D, "Δ en attente"]) - attendu_ecart) < 0.01,
          f"({calcul.loc[D, 'Δ en attente']})")
 verifier("les recettes affichées intègrent la modification",
          abs(float(calcul.loc[D, "Recettes"])
-             - (avant.recettes + 5 * avant.tarifs["t_pay"])) < 0.01)
+             - (avant.recettes + attendu_ecart)) < 0.01)
 verifier("les autres journées ne bougent pas",
          all(abs(float(calcul.loc[d, "Δ en attente"])) < 0.01
              for d in calcul.index if d != D))
+verifier("la page le dit en toutes lettres",
+         any("modification(s) en attente" in i.value for i in at_totaux.info),
+         str([i.value for i in at_totaux.info]))
+
+at = at.switch_page("app_pages/journal.py").run()
+verifier("retour à la saisie sans exception", not at.exception, str(at.exception))
 verifier("la modification est listée",
          any("Modifications en attente" in s.value for s in at.subheader))
 verifier("un motif est exigé",
@@ -428,7 +481,7 @@ at = lancer("app_pages/journal.py", {
 })
 verifier("modification visible avant de changer d'onglet",
          any("Modifications en attente" in s.value for s in at.subheader)
-         and abs(float(at.dataframe[1].value.loc[D, "Δ en attente"])) > 0.01)
+         and (t := metrique(at, "Recettes")) is not None and t.delta)
 verifier("le brouillon est mémorisé hors de l'état des widgets",
          at.session_state["_brouillons"][GRILLE].get((POS_15, "pay_n"))
          == avant_q.pay_n + 7,
@@ -447,10 +500,16 @@ verifier("le brouillon a survécu à la purge",
 
 at.switch_page("app_pages/journal.py").run()
 verifier("retour sans exception", not at.exception, str(at.exception))
+attendu_q = 7 * avant_q.tarifs["t_pay"]
+tuile_q = metrique(at, "Recettes")
 verifier("la modification est restaurée depuis le brouillon",
-         abs(float(at.dataframe[1].value.loc[D, "Δ en attente"])
-             - 7 * avant_q.tarifs["t_pay"]) < 0.01,
-         f"({at.dataframe[1].value.loc[D, 'Δ en attente']})")
+         tuile_q is not None and tuile_q.delta
+         and tuile_q.delta.replace(" ", "").startswith(f"+{attendu_q:.0f}"),
+         f"({tuile_q.delta if tuile_q else None})")
+verifier("et la grille la porte de nouveau",
+         abs(float(at.dataframe[0].value.iloc[POS_15]["pay_n"])
+             - (avant_q.pay_n + 7)) < 0.01,
+         f"({at.dataframe[0].value.iloc[POS_15]['pay_n']})")
 verifier("elle est signalée comme non enregistrée",
          any("Rien n'est encore enregistré" in c.value for c in at.caption))
 verifier("rien n'a été enregistré entre-temps",
@@ -468,12 +527,17 @@ verifier("le motif a survécu au détour",
 at.button(key="abandon_mois").click().run()
 verifier("après abandon, plus aucune modification",
          any("Aucune." in c.value for c in at.caption))
-verifier("les colonnes calculées sont revenues au registre",
-         all(abs(float(v)) < 0.01 for v in at.dataframe[1].value["Δ en attente"]))
-at.switch_page("app_pages/tableau_bord.py").run()
+verifier("les tuiles sont revenues au registre",
+         (t := metrique(at, "Recettes")) is not None and not t.delta,
+         f"({t.delta if t else None})")
+at.switch_page("app_pages/totaux.py").run()
+verifier("et la page des totaux aussi",
+         all(abs(float(v)) < 0.01
+             for v in at.dataframe[0].value["Δ en attente"]))
 at.switch_page("app_pages/journal.py").run()
 verifier("l'abandon tient après un changement d'onglet",
-         all(abs(float(v)) < 0.01 for v in at.dataframe[1].value["Δ en attente"]))
+         (t := metrique(at, "Recettes")) is not None and not t.delta,
+         f"({t.delta if t else None})")
 verifier("toujours rien en base",
          store.nb_rectifications(store.connect()) == nb_rectifs_avant)
 

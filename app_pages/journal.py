@@ -1,9 +1,11 @@
-"""Le mois comptable : son tableau, ses colonnes calculées, ses corrections.
+"""Le mois comptable : la grille de saisie, et rien d'autre.
 
-C'est l'écran de travail principal, la saisie se faisant en fin de mois. Le
-tableau reprend la feuille mensuelle du classeur : à gauche ce qui se saisit, à
-droite ce que les formules en tirent. On y travaille sur le registre corrigé ;
-le registre réel, lui, ne s'édite pas.
+C'est l'écran de travail principal, la saisie se faisant en fin de mois. Il ne
+porte **que les colonnes de saisie du classeur** — c'est la secrétaire qui le
+remplit, et elle n'a pas à lire ce que les formules en tirent : les totaux du
+mois sont en tuiles sous le tableau, le détail journée par journée est sur la
+page « Totaux du mois ». On y travaille sur le registre corrigé ; le registre
+réel, lui, ne s'édite pas.
 """
 
 from __future__ import annotations
@@ -14,8 +16,9 @@ import datetime as dt
 import pandas as pd
 import streamlit as st
 
-from app_utils import (bandeau_mois, barre_export, editeur_persistant,
-                       get_conn, memoriser, oublier, selecteur_mois,
+from app_utils import (bandeau_mois, barre_export, brouillon_du_mois,
+                       calculs_du_mois, editeur_persistant, get_conn,
+                       memoriser, mois_affiche, oublier, selecteur_mois,
                        totaux_registre)
 from compta import store, xlsx_io
 from compta.config import MONTANTS_DIRECTS, TOUS_ACTES
@@ -72,11 +75,9 @@ fin = dt.date(annee, mois, calendar.monthrange(annee, mois)[1])
 
 # Le mois se travaille en entier, y compris au-delà de la dernière ligne du
 # classeur : les journées absentes du registre se créent à l'enregistrement.
-connues = {r["date"]: r for r in store.journal(conn, debut, fin, corrige=corrige)}
-lignes = [
-    connues.get(d.isoformat()) or store.ligne_vide(d, tarifs)
-    for d in (debut + dt.timedelta(days=n) for n in range((fin - debut).days + 1))
-]
+par_date = mois_affiche(conn, annee, mois, corrige, tarifs)
+dates = list(par_date)
+lignes = list(par_date.values())
 
 # --- totaux du mois ----------------------------------------------------------
 
@@ -111,10 +112,6 @@ if actifs == 0 and dernier_rempli and fin > dernier_rempli:
 
 champs = [a.cle for a in TOUS_ACTES] + [c for c, _ in MONTANTS_DIRECTS]
 libelles = {a.cle: a.libelle for a in TOUS_ACTES} | dict(MONTANTS_DIRECTS)
-
-triees = sorted(lignes, key=lambda x: x["date"])
-par_date = {dt.date.fromisoformat(r["date"]): r for r in triees}
-dates = list(par_date)
 
 st.subheader(f"Tableau de {mois_long(annee, mois)}", anchor=False)
 
@@ -164,29 +161,13 @@ else:
     edite, ecarts = base, []
 zone_export_saisie = st.container()
 
-# --- ce que les formules en tirent, calculé sur ce qui est affiché -----------
+# --- ce que la saisie donne, pour les tuiles ---------------------------------
 
-# accès par position : l'index du tableau peut être converti par pandas, l'ordre
-# des lignes, lui, est celui de `dates`
-journees, calculees = [], []
-for i, d in enumerate(dates):
-    j = store.vers_journee(par_date[d], tarifs, frontiere)
-    for c in champs:
-        valeur = edite[c].iloc[i]
-        valeur = 0 if pd.isna(valeur) else valeur
-        setattr(j, c, float(valeur) if c in MONTANTS else int(valeur))
-    journees.append(j)
-    calculees.append({
-        "Date": d,
-        "État": ("Rectifiée" if par_date[d]["rectifiee"] else
-                 "Clôturée" if par_date[d]["cloture"] else "Ouverte"),
-        "Patients": j.patients,
-        "Recettes": j.recettes,
-        "CA déclaré": j.ca_declare,
-        "Caisse": j.caisse,
-        "Dû CNAM": j.charge_cnam,
-        "Δ en attente": j.recettes - par_date[d]["recettes"],
-    })
+# Le calcul est celui de la page « Totaux du mois » — un seul code pour les
+# deux écrans, sinon ils finiraient par ne plus dire la même chose. Il relit la
+# saisie en attente là où l'éditeur la conserve.
+journees, _ = calculs_du_mois(par_date, tarifs, frontiere,
+                              brouillon_du_mois(annee, mois) if corrige else {})
 
 periode = mois_long(annee, mois)
 registre_dit = "registre corrigé" if corrige else "registre réel"
@@ -208,38 +189,13 @@ bandeau_mois(
                for d in dates] if ecarts else None,
 )
 
-# Le détail par journée ne s'impose plus à l'écran de saisie ; il reste d'un
-# clic, avec son export, pour qui veut vérifier une journée ou sortir les
-# totaux du mois.
-with st.expander("Ce que les formules en tirent, jour par jour — colonnes U, X, "
-                 "Z, AB, AC", icon=":material/functions:"):
-    st.dataframe(
-        pd.DataFrame(calculees).set_index("Date"),
-        height=420,
-        column_config={
-            "Date": st.column_config.DateColumn(format="ddd DD/MM", width=110),
-            "État": st.column_config.TextColumn(width=100),
-            "Patients": st.column_config.NumberColumn(format="%d", width=100),
-            "Recettes": st.column_config.NumberColumn(format="%.0f", width=110),
-            "CA déclaré": st.column_config.NumberColumn(format="%.0f", width=110,
-                                                        help="Colonne AC"),
-            "Caisse": st.column_config.NumberColumn(format="%.0f", width=110,
-                                                    help="Colonne X"),
-            "Dû CNAM": st.column_config.NumberColumn(format="%.0f", width=110,
-                                                     help="Colonne Z"),
-            "Δ en attente": st.column_config.NumberColumn(
-                "Δ en attente", format="%+.0f", width=120,
-                help="Ce que la modification en cours changerait aux recettes "
-                     "de la journée, avant enregistrement."),
-        },
-    )
-    barre_export(
-        pd.DataFrame(calculees).set_index("Date").drop(columns=["Δ en attente"]),
-        f"totaux_{annee}-{mois:02d}", f"Totaux de {periode}",
-        cle=f"calcul_{annee}_{mois}", totaux=totaux_registre(journees),
-        sous_titre=f"Cabinet d'ophtalmologie · {registre_dit} · "
-                   "colonnes calculées du classeur",
-    )
+# Le détail par journée est sur la page d'à côté : cet écran-ci ne sert qu'à
+# saisir.
+with st.container(horizontal=True, vertical_alignment="center"):
+    st.page_link("app_pages/totaux.py",
+                 label="Voir ce que les formules en tirent, jour par jour",
+                 icon=":material/functions:")
+    st.caption("Colonnes U, X, Z, AB, AC — la saisie en attente y est comprise.")
 
 
 def lien_classeur() -> None:

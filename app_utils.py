@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import calendar
 import copy
 import datetime as dt
 import sqlite3
@@ -11,7 +12,8 @@ import streamlit as st
 
 from compta import export, store
 from compta.config import LIBELLES_CHAMPS, MOIS_FR
-from compta.model import CHAMPS_SAISIE, COMPTEURS, date_longue, tnd
+from compta.model import (CHAMPS_SAISIE, COMPTEURS, MONTANTS, date_longue,
+                          tnd)
 
 
 @st.cache_resource
@@ -68,6 +70,71 @@ def bandeau_registre(journees: list, reference: list | None = None) -> None:
         if ecart_p or ecart_c:
             detail += f"  ·  écart : {ecart_p:+d} patient(s), {ecart_c:+d} acte(s)"
     st.caption(detail)
+
+
+def mois_affiche(conn, annee: int, mois: int, corrige: bool,
+                 tarifs: dict) -> dict:
+    """Le mois entier, du 1er au dernier jour, indexé par date.
+
+    Le tableau se construit sur le calendrier, pas sur les lignes du registre :
+    au-delà de la dernière ligne du classeur (23/01/2027) les journées se créent
+    à l'enregistrement, mais le mois se travaille quand même.
+    """
+    debut = dt.date(annee, mois, 1)
+    fin = dt.date(annee, mois, calendar.monthrange(annee, mois)[1])
+    connues = {r["date"]: r for r in store.journal(conn, debut, fin,
+                                                   corrige=corrige)}
+    lignes = [
+        connues.get(d.isoformat()) or store.ligne_vide(d, tarifs)
+        for d in (debut + dt.timedelta(days=n) for n in range((fin - debut).days + 1))
+    ]
+    return {dt.date.fromisoformat(r["date"]): r
+            for r in sorted(lignes, key=lambda x: x["date"])}
+
+
+def calculs_du_mois(par_date: dict, tarifs: dict, frontiere,
+                    brouillon: dict | None = None) -> tuple[list, list]:
+    """Les journées du mois et leurs colonnes calculées.
+
+    `brouillon` — `{(position, champ): valeur}`, tel que l'éditeur le conserve —
+    applique la saisie **en attente**, celle qui n'est pas encore enregistrée.
+    C'est ce qui permet à l'écran de saisie et à la page des totaux de dire la
+    même chose : on tape sur l'un, l'autre suit, avant tout enregistrement.
+
+    Le calcul vit ici, en un seul endroit, parce que deux copies finiraient par
+    diverger — et ce sont les formules du classeur qu'elles reproduisent.
+    """
+    journees, calculees = [], []
+    for position, date in enumerate(par_date):
+        ligne = par_date[date]
+        journee = store.vers_journee(ligne, tarifs, frontiere)
+        for champ in CHAMPS_SAISIE:
+            if brouillon and (position, champ) in brouillon:
+                valeur = brouillon[(position, champ)]
+                setattr(journee, champ,
+                        float(valeur) if champ in MONTANTS else int(valeur))
+        journees.append(journee)
+        calculees.append({
+            "Date": date,
+            "État": ("Rectifiée" if ligne["rectifiee"] else
+                     "Clôturée" if ligne["cloture"] else "Ouverte"),
+            "Patients": journee.patients,
+            "Recettes": journee.recettes,
+            "CA déclaré": journee.ca_declare,
+            "Caisse": journee.caisse,
+            "Dû CNAM": journee.charge_cnam,
+            "Δ en attente": journee.recettes - ligne["recettes"],
+        })
+    return journees, calculees
+
+
+def brouillon_du_mois(annee: int, mois: int) -> dict:
+    """La saisie en attente sur la grille d'un mois, s'il y en a une.
+
+    Elle vit dans l'état de session, pas en base : elle survit au changement de
+    page et se perd à la fermeture de l'app.
+    """
+    return st.session_state.get("_brouillons", {}).get(f"grille_{annee}_{mois}", {})
 
 
 def bandeau_mois(journees: list, reference: list | None = None) -> None:

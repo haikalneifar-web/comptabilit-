@@ -81,11 +81,12 @@ encore au registre : le classeur s'arrête au 23/01/2027, au-delà les journées
 créent à l'enregistrement. La page *Saisie du jour* reste là pour les journées
 saisies à l'unité.
 
-## Les sept pages
+## Les huit pages
 
 | Page | À quoi elle sert |
 |---|---|
 | **Mois comptable** | L'écran de saisie, ouvert sur le mois à reprendre : une grille pleine largeur, une ligne par journée, et les totaux du mois en tuiles sous le tableau. C'est là qu'on saisit, qu'on corrige et qu'on rectifie. |
+| **Totaux du mois** | Ce que les formules tirent du mois, journée par journée — colonnes U, X, Z, AB, AC. Rien ne s'y saisit ; la saisie en attente sur l'écran précédent y est comprise. |
 | **Saisie du jour** | En appoint : un bouton par acte au fil de la journée, ou les totaux du jour d'un coup. |
 | **Bordereaux** | Édite le bordereau du mois — le mois du registre dans un classeur autonome, montants en formules — le range, en garde l'historique et montre l'évolution. |
 | **Rectifications** | Deux tableaux côte à côte : à gauche le registre réel, non modifiable ; à droite le corrigé, qu'on modifie. L'écart devient une rectification motivée. Suivent le journal des corrections du mois et leur effet sur les totaux. |
@@ -106,7 +107,11 @@ détail (cataractes, laser, divers, dépenses). Quand une modification est en
 attente, chaque tuile affiche en plus ce qu'elle changerait.
 
 Le **détail par journée** — colonnes U, X, Z, AB, AC et l'écart en attente —
-reste à un clic, dans un volet replié sous les tuiles, avec son export.
+est sur la page suivante, **Totaux du mois**, avec son export. Les deux écrans
+partagent le même calcul (`app_utils.calculs_du_mois`) : deux copies finiraient
+par diverger, et ce sont les formules du classeur qu'elles reproduisent. La
+**saisie en attente** — tapée, pas encore enregistrée — y est comprise : elle
+vit dans l'état de session et suit d'une page à l'autre.
 
 Les **largeurs de colonnes sont posées en pixels**, pas laissées au calcul
 automatique : à douze colonnes, les en-têtes se faisaient rogner (« Rembo »,
@@ -114,9 +119,10 @@ automatique : à douze colonnes, les en-têtes se faisaient rogner (« Rembo »,
 
 Trois choses sont **tenues par des tests** : chaque colonne affichée a une
 largeur posée, la somme de ces largeurs tient dans la page, et l'ordre de
-l'écran — grille, puis tuiles, puis volet replié — est vérifié sur l'arbre de
-rendu. Ajouter une colonne sans rééquilibrer, ou remonter les tuiles au-dessus
-du tableau, fait échouer la suite.
+l'écran — la grille, puis les tuiles — est vérifié sur l'arbre de rendu.
+Ajouter une colonne sans rééquilibrer, ou remonter les tuiles au-dessus du
+tableau, fait échouer la suite. Un test vérifie aussi qu'aucune colonne
+calculée ne s'est glissée dans la grille de saisie.
 
 ## Quand un tarif change
 
@@ -377,7 +383,7 @@ python tests\test_export.py           # PDF, Excel et CSV relus et vérifiés
 python tests\test_synchronisation.py  # le classeur modifié en dehors de l'app
 python tests\test_import_tarifs.py    # actes comptés sans montant, tarifs hérités
 python tests\test_bordereau.py        # bordereau : formules, tarifs, dossier du comptable
-python tests\test_pages.py            # rendu des sept pages, sans navigateur
+python tests\test_pages.py            # rendu des huit pages, sans navigateur
 ```
 
 Ils travaillent tous sur des **copies** de la base et du classeur — ou sur un
