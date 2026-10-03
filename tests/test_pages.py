@@ -353,6 +353,70 @@ verifier("valeurs d'origine annoncées",
 verifier("registre réel non éditable",
          any("ne s'éditent pas" in i.value for i in at.info))
 
+print("\n4 a. Mois comptable — le tarif se lit au-dessus de la grille")
+# La règle est de régler le tarif AVANT de saisir, une journée enregistrée
+# figeant le sien. L'écran de saisie ne le montrait nulle part. On pose un tarif
+# APCI que rien d'autre ne porte, pour le reconnaître à coup sûr.
+conn = store.connect()
+tarifs_avant = store.tarifs_courants(conn)
+store.enregistrer_tarifs(conn, tarifs_avant | {"t_apci": 99.0})
+a_saisir = store.mois_a_saisir(conn)
+debut_a_saisir = f"{a_saisir[0]:04d}-{a_saisir[1]:02d}"
+apci_classeur = sorted({r["t_apci"] for r in conn.execute(
+    "SELECT t_apci FROM jours WHERE substr(date,1,7)=? AND cloture=0 AND "
+    "(pay_n+remb_n+apci_n+tp_n+star_n+cat_cnam_n+cat_pay_n)=0",
+    (debut_a_saisir,))})
+conn.close()
+
+
+def legende_tarifs(at_page):
+    return next((c.value for c in at_page.caption
+                 if "Tarifs de ce mois" in c.value), None)
+
+
+def a_plat(bloc):
+    """L'arbre de rendu à plat, chaque nœud tel quel, dans l'ordre d'affichage."""
+    noeuds = []
+    for enfant in getattr(bloc, "children", {}).values():
+        noeuds.append(enfant)
+        noeuds += a_plat(enfant)
+    return noeuds
+
+
+at = lancer("app_pages/journal.py", {"mois_travail": a_saisir})
+verifier("aucune exception", not at.exception, str(at.exception))
+legende = legende_tarifs(at)
+verifier("le mois à saisir annonce ses tarifs", legende is not None)
+verifier("au tarif en vigueur, pas à celui du classeur",
+         legende is not None and "APCI" in legende and "**99**" in legende,
+         f"({legende})")
+if apci_classeur:
+    verifier("le prix encore inscrit au classeur est montré barré",
+             f"~~{'/'.join(f'{v:g}' for v in apci_classeur)}~~" in (legende or ""),
+             f"({legende}, classeur {apci_classeur})")
+verifier("et un lien mène aux tarifs, pour les régler avant de saisir",
+         any(p.label == "Régler les tarifs" for p in at.get("page_link")))
+noeuds = a_plat(at.main)
+i_legende = next((i for i, n in enumerate(noeuds)
+                  if "Tarifs de ce mois" in str(getattr(n, "value", ""))), None)
+i_grille = next((i for i, n in enumerate(noeuds)
+                 if getattr(n, "type", "") in ("dataframe", "arrow_data_frame")), None)
+verifier("la légende vient avant la grille",
+         i_legende is not None and i_grille is not None and i_legende < i_grille,
+         f"(légende en {i_legende}, grille en {i_grille})")
+
+at = lancer("app_pages/journal.py", {"mois_travail": (2026, 7)})
+legende = legende_tarifs(at)
+verifier("un mois déjà travaillé garde ses tarifs, pas celui du jour",
+         legende is not None and "99" not in legende and "déjà travaillé" in legende,
+         f"({legende})")
+verifier("et n'offre pas de les régler",
+         not any(p.label == "Régler les tarifs" for p in at.get("page_link")))
+
+conn = store.connect()
+store.enregistrer_tarifs(conn, tarifs_avant)
+conn.close()
+
 print("\n4 bis. Totaux du mois — les colonnes calculées, sur leur page")
 at = lancer("app_pages/totaux.py", {"mois_travail": (2026, 7)})
 verifier("aucune exception", not at.exception, str(at.exception))
@@ -961,8 +1025,12 @@ conn.close()
 annee_test, mois_test = int(mois_plein[:4]), int(mois_plein[5:7])
 
 # sans mois choisi, la page s'ouvre sur le dernier mois qui porte des chiffres —
-# pas sur le mois à saisir, qui n'offrirait qu'un bouton grisé
-at = lancer("app_pages/bordereaux.py")
+# pas sur le mois à saisir, qui n'offrirait qu'un bouton grisé. La page
+# d'accueil a déjà résolu le mois en passant : on l'efface pour arriver ici sans
+# choix, sinon le test ne mesure que l'accord fortuit des deux défauts.
+at = lancer()
+at.session_state["mois_travail"] = None
+at.switch_page("app_pages/bordereaux.py").run()
 conn = store.connect()
 dernier_rempli = store.dernier_jour_rempli(conn)
 conn.close()

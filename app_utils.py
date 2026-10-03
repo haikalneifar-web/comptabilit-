@@ -54,6 +54,14 @@ COURTS_GRILLE = {
 }
 
 
+COURTS_TARIFS = {
+    "t_apci": "APCI", "t_tp_recu": "TP reçu", "t_tp_reste": "TP reste",
+    "t_remb": "remb", "t_star": "assurance", "t_pay": "payant",
+    "t_cat_cnam": "cataracte CNAM", "t_cat_pay": "cataracte payante",
+    "t_tva_tp": "TVA TP",
+}
+
+
 def config_grille(champs: list, libelles: dict) -> dict:
     """Les colonnes d'une grille mensuelle : largeurs en pixels, noms courts.
 

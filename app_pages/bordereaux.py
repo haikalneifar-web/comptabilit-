@@ -15,7 +15,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from app_utils import get_conn, montant, selecteur_mois
+from app_utils import COURTS_TARIFS, get_conn, montant, selecteur_mois
 from compta import bordereau, dossier_comptable, store, xlsx_io
 from compta.config import ARCHIVES_DIR
 from compta.model import mois_long
@@ -170,18 +170,12 @@ st.caption(
     "la dernière ligne les additionne. Une seconde feuille récapitule la "
     "provenance, les totaux et les tarifs appliqués."
 )
-COURTS = {
-    "t_apci": "APCI", "t_tp_recu": "TP reçu", "t_tp_reste": "TP reste",
-    "t_remb": "remb", "t_star": "assurance", "t_pay": "payant",
-    "t_cat_cnam": "cataracte CNAM", "t_cat_pay": "cataracte payante",
-    "t_tva_tp": "TVA TP",
-}
 releve = bordereau.tarifs_du_mois(journees)
 st.caption(
     ":material/sell: Chaque journée garde **son** tarif : une journée de 2019 "
     "s'écrit au prix de 2019. Tarifs de ce mois — "
     + " · ".join(
-        f"{COURTS.get(cle, cle)} **{'/'.join(f'{v:.0f}' for v in valeurs)}**"
+        f"{COURTS_TARIFS.get(cle, cle)} **{'/'.join(f'{v:.0f}' for v in valeurs)}**"
         for cle, valeurs in releve.items()
     )
     + (" — un poste porte deux prix dans le mois, le récapitulatif le signale."

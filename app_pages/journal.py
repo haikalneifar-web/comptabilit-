@@ -16,11 +16,11 @@ import datetime as dt
 import pandas as pd
 import streamlit as st
 
-from app_utils import (bandeau_mois, barre_export, brouillon_du_mois,
-                       calculs_du_mois, config_grille, editeur_persistant,
+from app_utils import (COURTS_TARIFS, bandeau_mois, barre_export,
+                       brouillon_du_mois, calculs_du_mois, config_grille, editeur_persistant,
                        get_conn, memoriser, mois_affiche, oublier,
                        selecteur_mois, totaux_registre)
-from compta import store, xlsx_io
+from compta import bordereau, store, xlsx_io
 from compta.config import MONTANTS_DIRECTS, TOUS_ACTES
 from compta.model import MONTANTS, mois_long
 
@@ -108,6 +108,46 @@ if actifs == 0 and dernier_rempli and fin > dernier_rempli:
         icon=":material/edit_calendar:",
     )
 
+# --- tarifs du mois ----------------------------------------------------------
+
+# La règle est de régler le tarif avant de saisir : une journée enregistrée fige
+# celui qu'elle porte. L'écran de saisie doit donc le montrer, au-dessus de la
+# grille, tel que chaque journée le prendra — pas le tarif courant en général.
+appliques = [store.vers_journee(par_date[d], tarifs, frontiere) for d in dates]
+releve = bordereau.tarifs_du_mois(appliques)
+# ce que la formule du classeur porte encore, quand l'app va la réaligner
+realignes = {
+    cle: sorted({float(par_date[d][cle]) for d, j in zip(dates, appliques)
+                 if abs(float(par_date[d][cle]) - j.tarifs[cle]) > 0.005})
+    for cle in releve
+}
+realignes = {cle: anciens for cle, anciens in realignes.items() if anciens}
+modifiable = fin >= frontiere
+
+
+def prix(cle: str) -> str:
+    valeurs = "/".join(f"{v:g}" for v in releve[cle])
+    if cle in realignes:
+        anciens = "/".join(f"{v:g}" for v in realignes[cle])
+        return f"{COURTS_TARIFS.get(cle, cle)} ~~{anciens}~~ **{valeurs}**"
+    return f"{COURTS_TARIFS.get(cle, cle)} **{valeurs}**"
+
+
+with st.container(horizontal=True, vertical_alignment="center", key="tarifs_mois"):
+    st.caption(
+        ":material/sell: Tarifs de ce mois — "
+        + " · ".join(prix(cle) for cle in releve)
+        + (" — barré : le prix encore inscrit dans la formule du classeur, "
+           "remis à jour à l'écriture" if realignes else "")
+        + (" — un poste porte deux prix dans le mois"
+           if any(len(v) > 1 for v in releve.values()) else "")
+        + ("" if modifiable else
+           " — mois déjà travaillé : ses journées gardent leur tarif")
+    )
+    if modifiable:
+        st.page_link("app_pages/tarifs.py", label="Régler les tarifs",
+                     icon=":material/tune:")
+
 # --- tableau du mois ---------------------------------------------------------
 
 champs = [a.cle for a in TOUS_ACTES] + [c for c, _ in MONTANTS_DIRECTS]
@@ -164,8 +204,7 @@ with zone_export_saisie:
 
 bandeau_mois(
     journees,
-    reference=[store.vers_journee(par_date[d], tarifs, frontiere)
-               for d in dates] if ecarts else None,
+    reference=appliques if ecarts else None,
 )
 
 # Le détail par journée est sur la page d'à côté : cet écran-ci ne sert qu'à
