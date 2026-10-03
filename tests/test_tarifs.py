@@ -102,6 +102,17 @@ verifier("la frontière est le 1er du mois à reprendre",
          frontiere == dt.date(annee_m, mois_m, 1), f"({frontiere})")
 verifier("la journée de test est bien du côté à venir de la frontière",
          VIDE >= frontiere, f"({VIDE} < {frontiere})")
+# Le 15 septembre vient d'être enregistré (section 5), mais pas encore écrit dans
+# le classeur : septembre n'est pas fini. Saisi en octobre, il passait pourtant
+# pour « déjà travaillé » dès sa première journée sauvée, et le reste du mois
+# retombait au tarif d'avant.
+AUTRE = dt.date(2026, 9, 22)
+verifier("une saisie partielle ne fait pas passer au mois suivant",
+         (annee_m, mois_m) == (VIDE.year, VIDE.month), f"({annee_m}, {mois_m})")
+verifier("les autres journées vides du mois suivent toujours le tarif en vigueur",
+         store.lire_jour(conn, AUTRE, store.tarifs_courants(conn)).tarifs["t_apci"]
+         == NOUVEAUX["t_apci"],
+         f"({store.lire_jour(conn, AUTRE, store.tarifs_courants(conn)).tarifs['t_apci']})")
 
 # une journée oubliée : vide et ouverte, mais dans un mois déjà travaillé
 oubliee = conn.execute(

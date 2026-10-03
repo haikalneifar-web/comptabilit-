@@ -647,8 +647,19 @@ def dernier_jour_rempli(conn) -> dt.date | None:
 
 def mois_a_saisir(conn) -> tuple[int, int]:
     """Le mois par lequel reprendre : celui qui suit la dernière journée
-    renseignée, ou le mois courant si la saisie est à jour."""
-    dernier = dernier_jour_rempli(conn)
+    clôturée, ou le mois courant si la saisie est à jour.
+
+    Clôturée, pas seulement renseignée : un mois n'est fini qu'une fois écrit
+    dans le classeur. La saisie se fait après coup — septembre se remplit en
+    octobre — et compter la dernière journée enregistrée ferait passer au mois
+    suivant dès la première journée sauvée. Le reste du mois tomberait alors
+    derrière `frontiere_tarifs` et retrouverait l'ancien tarif.
+    """
+    r = conn.execute(
+        f"SELECT MAX(date) d FROM jours WHERE cloture=1 "
+        f"AND ({' + '.join(CHAMPS_SAISIE)}) > 0"
+    ).fetchone()
+    dernier = dt.date.fromisoformat(r["d"]) if r and r["d"] else None
     aujourdhui = dt.date.today()
     if dernier is None:
         return aujourdhui.year, aujourdhui.month
