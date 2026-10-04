@@ -100,7 +100,7 @@ def rafraichir_transmis(conn, racine=None, annees: list[int] | None = None,
     de fichiers ne se relit entièrement qu'une fois. Les lignes dont le fichier
     a disparu s'en vont.
     """
-    from . import dossier_comptable
+    from .. import dossier_comptable
 
     connus = {
         r["chemin"]: (r["modifie_le"], r["taille"])
