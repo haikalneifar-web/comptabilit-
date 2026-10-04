@@ -5,7 +5,7 @@ Application de saisie quotidienne adossée au classeur `compta jdid .xlsx`.
 ## Lancer
 
 ```powershell
-streamlit run "F:\projets claude\claude comptabilite\streamlit_app.py"
+streamlit run streamlit_app.py
 ```
 
 L'app s'ouvre sur <http://localhost:8501>.
@@ -14,7 +14,7 @@ Dépendances : `streamlit`, `pandas`, `altair`, `openpyxl` (lecture et écriture
 classeur) et `reportlab` (export PDF).
 
 ```powershell
-pip install streamlit pandas altair openpyxl reportlab
+pip install -r requirements.txt
 ```
 
 ### En un exe, sans rien installer
@@ -53,8 +53,14 @@ C'est aussi le fichier à sauvegarder. Lancé depuis les sources (`streamlit run
 ou `python lancer.py`), c'est en revanche le `data\` du projet qui sert — les
 deux registres sont distincts.
 
-Le classeur, lui, est toujours lu là où `COMPTA_XLSX` ou `compta/config.py` le
-désigne.
+**Le classeur** n'est pas lié au code. On le choisit dans l'app — page
+*Démarrage* au premier lancement, puis *Classeur Excel*, bloc « Changer de
+classeur » : un chemin saisi, ou un fichier `.xlsx` déposé (il est alors copié
+dans `data\classeurs\`). Le choix est retenu dans le registre, et changer de
+classeur remet à zéro le contrôle « le classeur a bougé sans l'app ». Tant
+qu'aucun n'est choisi, c'est la valeur par défaut qui sert : `COMPTA_XLSX`, à
+défaut `compta/config.py`. Reprendre un ancien fichier ne réimporte rien tout
+seul : il faut ensuite *Réimporter depuis le classeur*.
 
 `lancer.py` est le point d'entrée de l'exe, et marche aussi depuis les sources
 (`python lancer.py`) : c'est le même démarrage que `streamlit run`, en passant
@@ -415,7 +421,13 @@ app_pages/            une page par écran
 compta/
   config.py           chemins, colonnes du classeur, postes
   model.py            miroir Python des formules Excel
-  store.py            registre SQLite : journées, clôture, rectifications, bordereaux
+  store/              registre SQLite, un module par sujet :
+    base.py             schéma, réglages (`meta`), tarifs
+    journees.py         journées du registre réel, clôture, export
+    rectifications.py   journal des corrections, registre corrigé
+    actes.py            saisie patient par patient
+    agregats.py         totaux mensuels et annuels, journal, mois à saisir
+    bordereaux.py       bordereaux mensuels et dossier transmis au comptable
   xlsx_io.py          import et écriture du classeur
   bordereau.py        le mois du registre en classeur autonome, formules comprises
   dossier_comptable.py  où ranger un bordereau, et lecture de ce qui a été transmis
@@ -438,12 +450,14 @@ python tests\test_bordereau.py        # bordereau : formules, tarifs, dossier du
 python tests\test_pages.py            # rendu des huit pages, sans navigateur
 ```
 
-Ils travaillent tous sur des **copies** de la base et du classeur — ou sur un
-classeur fabriqué pour l'occasion ; les originaux ne sont jamais ouverts en
-écriture.
+Ils tournent sur un **cabinet fictif** (`tests/atelier.py`) : un classeur fabriqué
+à la forme du vrai — une ligne par jour du 01/10/2015 au 23/01/2027, des chiffres
+jusqu'au 31/08/2026, trois époques de tarifs — et son registre importé. Ni le
+classeur du cabinet ni `data/compta.db` ne sont nécessaires, et aucun n'est jamais
+ouvert. Le cabinet fictif est bâti une fois, puis gardé dans le dossier temporaire.
 
-Le chemin du classeur se change dans `compta/config.py`, ou par la variable
-d'environnement `COMPTA_XLSX`.
+Le classeur se choisit dans l'app (voir plus haut) ; la variable d'environnement
+`COMPTA_XLSX` ne fixe que la valeur par défaut.
 
 ## Ce que l'import a relevé dans le classeur
 

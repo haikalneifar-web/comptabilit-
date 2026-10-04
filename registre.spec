@@ -4,8 +4,8 @@
     pyinstaller registre.spec --noconfirm
 
 Le résultat est dans `dist/`. L'exe se pose où l'on veut : il crée `data/` et
-`sauvegardes/` à côté de lui, et va lire le classeur là où `COMPTA_XLSX` — ou
-`compta/config.py` — le désigne.
+`sauvegardes/` à côté de lui, et va lire le classeur qu'on lui a désigné dans l'app
+(par défaut `COMPTA_XLSX`, ou `compta/config.py`).
 
 Trois choses que PyInstaller ne devine pas seul :
 
