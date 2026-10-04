@@ -5,9 +5,8 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from app_utils import get_conn, montant
+from app_utils import choix_classeur, get_conn, montant
 from compta import store, xlsx_io
-from compta.config import XLSX_PATH
 from compta.model import date_longue
 
 conn = get_conn()
@@ -18,14 +17,11 @@ st.write(
     "propre registre. Le classeur n'est pas modifié par cette étape."
 )
 
-infos = xlsx_io.infos_classeur()
+chemin = choix_classeur(conn, "demarrage")
+infos = xlsx_io.infos_classeur(chemin)
 
 if not infos["existe"]:
-    st.error(
-        f"Classeur introuvable : `{XLSX_PATH}`\n\n"
-        "Corrigez le chemin dans `compta/config.py`, ou définissez la variable "
-        "d'environnement `COMPTA_XLSX`, puis rechargez la page."
-    )
+    st.error(f"Classeur introuvable : `{chemin}`\n\nIndiquez le bon fichier ci-dessus.")
     st.stop()
 
 with st.container(border=True):
@@ -51,7 +47,7 @@ st.info(
 if st.button("Importer l'historique", icon=":material/download:", type="primary"):
     barre = st.progress(0.0, text="Lecture du classeur…")
     try:
-        rapport = xlsx_io.importer(conn, progress=lambda p: barre.progress(
+        rapport = xlsx_io.importer(conn, chemin, progress=lambda p: barre.progress(
             min(p, 1.0), text=f"Lecture du classeur… {p:.0%}"))
     except Exception as err:  # noqa: BLE001
         barre.empty()

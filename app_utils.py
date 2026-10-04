@@ -10,8 +10,10 @@ import sqlite3
 import pandas as pd
 import streamlit as st
 
-from compta import export, store
-from compta.config import LIBELLES_CHAMPS, MOIS_FR
+from pathlib import Path
+
+from compta import export, store, xlsx_io
+from compta.config import DATA_DIR, LIBELLES_CHAMPS, MOIS_FR
 from compta.model import (CALCULES, CHAMPS_SAISIE, COMPTEURS, MONTANTS,
                           date_longue, tnd)
 
@@ -21,6 +23,33 @@ def get_conn() -> sqlite3.Connection:
     conn = store.connect()
     store.init_db(conn)
     return conn
+
+
+def choix_classeur(conn, cle: str) -> Path:
+    """Le classeur auquel le registre est lié, et de quoi en changer : un chemin
+    saisi, ou un fichier déposé (copié dans le dossier de données). Le lien n'est
+    jamais figé : on peut reprendre un ancien classeur à tout moment."""
+    courant = xlsx_io.chemin_classeur(conn)
+    with st.expander("Changer de classeur", icon=":material/folder_open:",
+                     expanded=not courant.exists()):
+        saisi = st.text_input("Chemin du fichier .xlsx", value=str(courant),
+                              key=f"{cle}_chemin")
+        depose = st.file_uploader("…ou déposer un fichier", type=["xlsx", "xlsm"],
+                                  key=f"{cle}_depot")
+        if st.button("Utiliser ce classeur", key=f"{cle}_lier"):
+            if depose is not None:
+                dossier = DATA_DIR / "classeurs"
+                dossier.mkdir(exist_ok=True)
+                cible = dossier / Path(depose.name).name
+                cible.write_bytes(depose.getvalue())
+            else:
+                cible = Path(saisi.strip().strip('"'))
+            if not cible.is_file():
+                st.error(f"Fichier introuvable : `{cible}`")
+            else:
+                xlsx_io.lier_classeur(conn, cible)
+                st.rerun()
+    return xlsx_io.chemin_classeur(conn)
 
 
 def montant(v: float, suffixe: str = " TND") -> str:

@@ -109,8 +109,27 @@ def _heriter_des_voisines(lus: list[float | None]) -> list[float | None]:
     return comble
 
 
-def sauvegarder(chemin: Path = XLSX_PATH) -> Path:
+_META_CHEMIN = "xlsx_chemin"
+
+
+def chemin_classeur(conn) -> Path:
+    """Le classeur auquel le registre est lié : celui qu'on a choisi dans l'app,
+    à défaut `COMPTA_XLSX` / `config.XLSX_PATH`. Le chemin n'est donc pas gravé
+    dans le code : on peut en changer, ou reprendre un ancien fichier."""
+    choisi = meta_get(conn, _META_CHEMIN)
+    return Path(choisi) if choisi else XLSX_PATH
+
+
+def lier_classeur(conn, chemin: Path) -> None:
+    """Désigne le classeur à lire et à écrire. Le contrôle de modification
+    extérieure repart de zéro : il portait sur l'ancien fichier."""
+    meta_set(conn, _META_CHEMIN, str(Path(chemin)))
+    meta_set(conn, _META_SOURCE, None)
+
+
+def sauvegarder(chemin: Path | None = None) -> Path:
     """Copie horodatée du classeur avant toute écriture."""
+    chemin = chemin or XLSX_PATH
     horo = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
     cible = BACKUP_DIR / f"{chemin.stem}_{horo}{chemin.suffix}"
     shutil.copy2(chemin, cible)
@@ -137,19 +156,21 @@ def _empreinte(chemin: Path) -> dict:
     }
 
 
-def marquer_synchronise(conn, chemin: Path = XLSX_PATH) -> None:
+def marquer_synchronise(conn, chemin: Path | None = None) -> None:
     """Registre et classeur viennent d'être mis d'accord : on note l'état du
     fichier. Appelé après un import comme après une écriture."""
+    chemin = chemin or chemin_classeur(conn)
     if chemin.exists():
         meta_set(conn, _META_SOURCE, _empreinte(chemin))
 
 
-def etat_synchronisation(conn, chemin: Path = XLSX_PATH) -> dict:
+def etat_synchronisation(conn, chemin: Path | None = None) -> dict:
     """Le classeur a-t-il changé depuis que le registre l'a lu ?
 
     `connu` est faux tant qu'aucun relevé n'a été pris — registre importé avant
     la mise en place de ce contrôle. Dans ce cas on ne prétend rien.
     """
+    chemin = chemin or chemin_classeur(conn)
     if not chemin.exists():
         return {"connu": False, "absent": True, "a_jour": False}
     releve = meta_get(conn, _META_SOURCE)
@@ -173,7 +194,7 @@ def etat_synchronisation(conn, chemin: Path = XLSX_PATH) -> dict:
 
 # --- import ------------------------------------------------------------------
 
-def importer(conn, chemin: Path = XLSX_PATH, progress=None) -> dict:
+def importer(conn, chemin: Path | None = None, progress=None) -> dict:
     """Charge tout l'historique du classeur dans la base.
 
     En trois temps : on lit tout le classeur, puis on comble les tarifs qu'aucune
@@ -183,6 +204,7 @@ def importer(conn, chemin: Path = XLSX_PATH, progress=None) -> dict:
     Retourne un rapport : lignes lues, doublons ignorés, bornes de dates, et les
     postes dont le tarif a dû être hérité alors qu'ils portaient des actes.
     """
+    chemin = chemin or chemin_classeur(conn)
     wb_f = openpyxl.load_workbook(chemin, data_only=False)
     wb_v = openpyxl.load_workbook(chemin, data_only=True)
     ws_f, ws_v = wb_f[SHEET_NAME], wb_v[SHEET_NAME]
@@ -441,9 +463,10 @@ def _formules_absentes(ws, r: int, j: Journee) -> list[tuple[str, str, int]]:
     return trous
 
 
-def exporter(conn, journees: list[Journee], chemin: Path = XLSX_PATH,
+def exporter(conn, journees: list[Journee], chemin: Path | None = None,
              tarifs_nouveaux: dict[str, float] | None = None) -> dict:
     """Écrit les journées données dans le classeur. Retourne un rapport."""
+    chemin = chemin or chemin_classeur(conn)
     if not journees:
         return {"ecrites": 0, "creees": 0, "sauvegarde": None, "lignes": [],
                 "tarifs_alignes": [], "formules_posees": [],
@@ -519,7 +542,8 @@ def exporter(conn, journees: list[Journee], chemin: Path = XLSX_PATH,
     }
 
 
-def infos_classeur(chemin: Path = XLSX_PATH) -> dict:
+def infos_classeur(chemin: Path | None = None) -> dict:
+    chemin = chemin or XLSX_PATH
     if not chemin.exists():
         return {"existe": False}
     st = chemin.stat()

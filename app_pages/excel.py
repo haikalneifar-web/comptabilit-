@@ -7,7 +7,7 @@ import datetime as dt
 import pandas as pd
 import streamlit as st
 
-from app_utils import get_conn, montant
+from app_utils import choix_classeur, get_conn, montant
 from compta import store, xlsx_io
 from compta.config import BACKUP_DIR
 from compta.model import tnd
@@ -17,9 +17,10 @@ tarifs = store.tarifs_courants(conn)
 
 st.header("Classeur Excel", anchor=False)
 
-infos = xlsx_io.infos_classeur()
+chemin = choix_classeur(conn, "excel")
+infos = xlsx_io.infos_classeur(chemin)
 if not infos["existe"]:
-    st.error("Classeur introuvable. Vérifiez le chemin dans `compta/config.py`.")
+    st.error(f"Classeur introuvable : `{chemin}`. Indiquez le bon fichier ci-dessus.")
     st.stop()
 
 st.table(

@@ -35,6 +35,8 @@ BORDEREAUX_DIR = PROJECT_DIR / "bordereaux"
 ARCHIVES_DIR = BORDEREAUX_DIR / "archives"
 DB_PATH = DATA_DIR / "compta.db"
 
+# Simple valeur par défaut : le classeur effectivement utilisé se choisit dans
+# l'app (pages Démarrage et Classeur Excel) et se retient dans le registre.
 XLSX_PATH = Path(os.environ.get("COMPTA_XLSX", r"F:\comptabilité\compta jdid .xlsx"))
 SHEET_NAME = "Feuil1"
 
