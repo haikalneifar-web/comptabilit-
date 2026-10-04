@@ -13,6 +13,11 @@ from pathlib import Path
 PROJET = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJET))
 
+# le cabinet fictif de tests/atelier.py : ni le classeur réel, ni data/compta.db
+import atelier  # noqa: E402
+
+CLASSEUR, BASE = atelier.installer()
+
 import openpyxl  # noqa: E402
 
 from compta import store, xlsx_io  # noqa: E402
@@ -20,7 +25,7 @@ from compta.config import SHEET_NAME, XLSX_PATH  # noqa: E402
 
 atelier = Path(tempfile.mkdtemp())
 tmp_db = atelier / "test.db"
-shutil.copy2(PROJET / "data" / "compta.db", tmp_db)
+shutil.copy2(BASE, tmp_db)
 store.DB_PATH = tmp_db
 
 conn = store.connect()

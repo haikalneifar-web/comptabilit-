@@ -9,11 +9,16 @@ from pathlib import Path
 PROJET = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJET))
 
+# le cabinet fictif de tests/atelier.py : ni le classeur réel, ni data/compta.db
+import atelier  # noqa: E402
+
+CLASSEUR, BASE = atelier.installer()
+
 from compta import store  # noqa: E402
 from compta.model import Journee  # noqa: E402
 
 tmp = Path(tempfile.mkdtemp()) / "test.db"
-shutil.copy2(PROJET / "data" / "compta.db", tmp)
+shutil.copy2(BASE, tmp)
 store.DB_PATH = tmp
 
 conn = store.connect()
@@ -40,7 +45,8 @@ print("\n1. Migration : clôture des seules journées qui portent des chiffres")
 n_total = conn.execute("SELECT COUNT(*) n FROM jours").fetchone()["n"]
 n_cloture = conn.execute("SELECT COUNT(*) n FROM jours WHERE cloture=1").fetchone()["n"]
 n_ouvert = conn.execute("SELECT COUNT(*) n FROM jours WHERE cloture=0").fetchone()["n"]
-verifier("les 4 130 journées du classeur sont au registre", n_total == 4130,
+verifier("toutes les journées du classeur sont au registre",
+         n_total == (atelier.DERNIERE_LIGNE - atelier.DEBUT).days + 1,
          f"({n_total})")
 verifier("clôturées + ouvertes couvrent tout le registre",
          n_cloture + n_ouvert == n_total, f"({n_cloture} + {n_ouvert} ≠ {n_total})")

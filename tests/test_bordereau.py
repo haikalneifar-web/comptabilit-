@@ -19,6 +19,11 @@ from pathlib import Path
 PROJET = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJET))
 
+# le cabinet fictif de tests/atelier.py : ni le classeur réel, ni data/compta.db
+import atelier  # noqa: E402
+
+CLASSEUR, BASE = atelier.installer()
+
 import openpyxl  # noqa: E402
 
 from compta import bordereau, store  # noqa: E402
@@ -26,7 +31,7 @@ from compta.model import Journee, TARIFS_DEFAUT  # noqa: E402
 
 tmp = Path(tempfile.mkdtemp())
 base = tmp / "test.db"
-shutil.copy2(PROJET / "data" / "compta.db", base)
+shutil.copy2(BASE, base)
 store.DB_PATH = base
 
 conn = store.connect()

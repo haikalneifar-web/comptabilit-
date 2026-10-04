@@ -10,10 +10,15 @@ from pathlib import Path
 PROJET = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJET))
 
+# le cabinet fictif de tests/atelier.py : ni le classeur réel, ni data/compta.db
+import atelier  # noqa: E402
+
+CLASSEUR, BASE = atelier.installer()
+
 from compta import store  # noqa: E402
 
 tmp = Path(tempfile.mkdtemp()) / "test.db"
-shutil.copy2(PROJET / "data" / "compta.db", tmp)
+shutil.copy2(BASE, tmp)
 store.DB_PATH = tmp
 
 # une journée rectifiée, pour que les pages aient de la matière à afficher
@@ -677,7 +682,7 @@ at.switch_page("app_pages/tableau_bord.py").run()
 verifier("passage sur un autre onglet sans exception", not at.exception,
          str(at.exception))
 del at.session_state[GRILLE]
-verifier("état du widget bien purgé", GRILLE not in at.session_state.filtered_state)
+verifier("état du widget bien purgé", GRILLE not in at.session_state)
 verifier("le brouillon a survécu à la purge",
          GRILLE in at.session_state["_brouillons"])
 
