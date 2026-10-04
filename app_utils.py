@@ -40,8 +40,18 @@ def choix_classeur(conn, cle: str) -> Path:
             if depose is not None:
                 dossier = DATA_DIR / "classeurs"
                 dossier.mkdir(exist_ok=True)
-                cible = dossier / Path(depose.name).name
-                cible.write_bytes(depose.getvalue())
+                # jamais d'écrasement : une copie déjà là porte peut-être des
+                # journées écrites par l'app depuis le dépôt
+                nom = Path(depose.name)
+                cible = dossier / nom.name
+                if cible.exists():
+                    if cible.read_bytes() == depose.getvalue():
+                        pass            # même fichier : on garde la copie telle quelle
+                    else:
+                        horo = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+                        cible = dossier / f"{nom.stem}_{horo}{nom.suffix}"
+                if not cible.exists():
+                    cible.write_bytes(depose.getvalue())
             else:
                 cible = Path(saisi.strip().strip('"'))
             if not cible.is_file():
