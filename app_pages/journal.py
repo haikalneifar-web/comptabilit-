@@ -172,12 +172,24 @@ HAUTEUR = 560      # les tuiles de totaux restent visibles sous la grille
 # totaux du mois se lisent sous le tableau, et le détail par journée reste à un
 # clic, replié.
 st.caption("**Ce qui se saisit** — colonnes C, E, H, J, L, N, P, R, S, T, V")
-if corrige:
-    edite, ecarts = editeur_persistant(base, cle_grille, MONTANTS,
-                                       config_saisie, height=HAUTEUR)
-else:
-    st.dataframe(base, column_config=config_saisie, height=HAUTEUR)
-    edite, ecarts = base, []
+# Le tableau prend la hauteur de la fenêtre : la molette fait défiler les dates
+# dans le tableau, dont la ligne de titres reste fixe, et non la page entière.
+st.markdown(
+    "<style>.st-key-zone_grille [data-testid=\"stDataFrame\"] "
+    "{ height: calc(100vh - 8rem) !important; min-height: 420px; }</style>",
+    unsafe_allow_html=True,
+)
+# Les deux gestes de fin de saisie, à portée de main au-dessus du tableau ; la
+# barre se remplit plus bas, une fois les modifications connues.
+barre_actions = st.container(horizontal=True, vertical_alignment="center",
+                             key="barre_actions")
+with st.container(key="zone_grille"):
+    if corrige:
+        edite, ecarts = editeur_persistant(base, cle_grille, MONTANTS,
+                                           config_saisie, height=HAUTEUR)
+    else:
+        st.dataframe(base, column_config=config_saisie, height=HAUTEUR)
+        edite, ecarts = base, []
 zone_export_saisie = st.container()
 
 # --- ce que la saisie donne, pour les tuiles ---------------------------------
@@ -253,6 +265,56 @@ modifs = [
 a_rectifier = [m for m in modifs if m["cloture"]]
 a_ecrire = [m for m in modifs if not m["cloture"]]
 
+# journées du mois que le registre a enregistrées mais que le classeur n'a pas
+# encore reçues
+pour_classeur = [d for d in store.jours_a_exporter(conn) if debut <= d <= fin]
+motif_saisi = st.session_state.get(cle_motif, "")
+desaccord = sync["connu"] and not sync["a_jour"]
+
+with barre_actions:
+    enregistrer = st.button(
+        "Enregistrer les modifications" + (f" ({len(modifs)})" if modifs else ""),
+        icon=":material/save:", type="primary", key="enregistrer_mois",
+        disabled=not modifs or (bool(a_rectifier) and not motif_saisi.strip()),
+        help=("Motif obligatoire pour rectifier une journée clôturée "
+              "(en bas de page)." if a_rectifier and not motif_saisi.strip()
+              else "Garde la saisie dans le registre de l'app."),
+    )
+    ecrire_classeur = st.button(
+        "Enregistrer dans le classeur"
+        + (f" ({len(pour_classeur)})" if pour_classeur else ""),
+        icon=":material/table_view:", key="classeur_mois",
+        disabled=bool(modifs) or not pour_classeur or desaccord,
+        help=("Enregistrez d'abord les modifications en attente." if modifs
+              else "Le classeur a été modifié hors de l'app : passez par la "
+                   "page Classeur Excel." if desaccord
+              else "Rien à écrire : le classeur est à jour." if not pour_classeur
+              else "Écrit les journées du mois dans le classeur Excel (copie de "
+                   "sauvegarde avant) et les clôture."),
+    )
+    abandonner = st.button("Tout abandonner", icon=":material/undo:",
+                           type="tertiary", key="abandon_mois",
+                           disabled=not modifs)
+
+if ecrire_classeur:
+    journees_a_ecrire = [store.lire_jour_corrige(conn, d, tarifs)
+                         for d in pour_classeur]
+    try:
+        with st.spinner("Écriture dans le classeur…"):
+            rapport = xlsx_io.exporter(conn, journees_a_ecrire,
+                                       tarifs_nouveaux=tarifs)
+    except PermissionError:
+        st.error("Le classeur est ouvert dans Excel. Fermez-le puis réessayez.",
+                 icon=":material/lock:")
+    except Exception as err:  # noqa: BLE001
+        st.error(f"Écriture interrompue : {err}")
+    else:
+        store.marquer_exporte(
+            conn, [d for d, _, etat in rapport["lignes"] if etat == "écrite"])
+        st.toast(f"{rapport['ecrites']} journée(s) écrite(s) dans le classeur.",
+                 icon=":material/check:")
+        st.rerun()
+
 st.divider()
 st.subheader("Modifications en attente", anchor=False)
 
@@ -312,17 +374,9 @@ if a_rectifier:
         height=90, key=cle_motif,
     )
 
-with st.container(horizontal=True, vertical_alignment="center"):
-    enregistrer = st.button(
-        f"Enregistrer {len(modifs)} modification{'s' if len(modifs) > 1 else ''}",
-        icon=":material/save:", type="primary",
-        disabled=bool(a_rectifier) and not motif.strip(),
-    )
-    abandonner = st.button("Tout abandonner", icon=":material/undo:",
-                           type="tertiary", key="abandon_mois")
-    if a_rectifier and not motif.strip():
-        st.caption(":material/edit_note: Le motif est obligatoire pour rectifier "
-                   "une journée clôturée.")
+if a_rectifier and not motif.strip():
+    st.caption(":material/edit_note: Le motif est obligatoire pour rectifier "
+               "une journée clôturée.")
 
 if abandonner:
     oublier(cle_grille, cle_motif)

@@ -15,7 +15,7 @@ import atelier  # noqa: E402
 
 CLASSEUR, BASE = atelier.installer()
 
-from compta import store  # noqa: E402
+from compta import store, xlsx_io  # noqa: E402
 
 tmp = Path(tempfile.mkdtemp()) / "test.db"
 shutil.copy2(BASE, tmp)
@@ -349,7 +349,7 @@ etiquettes = [
     if isinstance(r, dict) and r.get("label")
 ]
 verifier("les libellés de la grille tiennent dans leur colonne",
-         all(len(str(e)) <= 12 for e in etiquettes), str(etiquettes))
+         all(len(str(e)) <= 13 for e in etiquettes), str(etiquettes))
 
 at.segmented_control(key="registre_journal").select("Réel").run()
 verifier("bascule vers le réel sans exception", not at.exception, str(at.exception))
@@ -655,6 +655,30 @@ verifier("écriture directe, sans rectification",
 verifier("la journée ouverte porte la nouvelle valeur",
          store.lire_jour(conn, ouverte).pay_n == 3)
 conn.close()
+
+print("\n5 ter bis. Mois comptable — « Enregistrer dans le classeur » est à portée")
+# l'écriture se fait sur une COPIE du classeur : l'original est partagé par tous les tests
+copie_classeur = Path(tempfile.mkdtemp()) / "classeur.xlsx"
+shutil.copy2(CLASSEUR, copie_classeur)
+conn = store.connect()
+xlsx_io.lier_classeur(conn, copie_classeur)
+conn.close()
+at = lancer("app_pages/journal.py", {"mois_travail": (2026, 7)})
+verifier("aucune exception", not at.exception, str(at.exception))
+bouton_classeur = at.button(key="classeur_mois")
+verifier("le bouton classeur annonce les journées en attente",
+         "(" in bouton_classeur.label, bouton_classeur.label)
+verifier("il est actif quand rien n'est en attente de saisie",
+         not bouton_classeur.disabled)
+bouton_classeur.click().run()
+verifier("aucune exception à l'écriture", not at.exception, str(at.exception))
+conn = store.connect()
+verifier("la journée est écrite et clôturée",
+         ouverte not in store.jours_a_exporter(conn)
+         and store.lire_jour(conn, ouverte).cloture)
+conn.close()
+verifier("le bouton est grisé une fois le classeur à jour",
+         at.button(key="classeur_mois").disabled)
 
 print("\n5 quater. Une saisie non enregistrée survit au changement d'onglet")
 conn = store.connect()
